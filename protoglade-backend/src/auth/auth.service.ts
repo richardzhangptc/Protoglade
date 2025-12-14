@@ -16,22 +16,26 @@ export class AuthService {
 
     const hash = await bcrypt.hash(password, 10);
 
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
         data: { email, password: hash, name },
     });
+    
+    const { password: _, ...safeUser } = user;
+    return safeUser;      
     }
 
     async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) throw new Error('Invalid email or password');
+    if (!user) throw new UnauthorizedException('Invalid email or password');
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) throw new Error('Invalid email or password');
+    if (!valid) throw new UnauthorizedException('Invalid email or password');
 
     const payload = { sub: user.id, email: user.email };
     const accessToken = this.jwt.sign(payload);
 
     return { accessToken };
     }
+
 
 }
