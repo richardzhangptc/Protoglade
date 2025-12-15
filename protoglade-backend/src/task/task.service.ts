@@ -66,12 +66,13 @@ export class TaskService {
       where: { projectId },
       include: {
         assignee: { select: { id: true, email: true, name: true } },
+        _count: { select: { comments: true } },
       },
       orderBy: [{ status: 'asc' }, { position: 'asc' }],
     });
   }
 
-  // Get a single task
+  // Get a single task with comments
   async findOne(taskId: string, userId: string) {
     const task = await this.prisma.task.findUnique({
       where: { id: taskId },
@@ -81,6 +82,12 @@ export class TaskService {
           include: {
             workspace: { select: { id: true, name: true } },
           },
+        },
+        comments: {
+          include: {
+            author: { select: { id: true, email: true, name: true } },
+          },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
