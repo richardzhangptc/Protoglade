@@ -175,6 +175,49 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Invitations
+  async sendInvitation(workspaceId: string, email: string, role?: string) {
+    return this.request<import('@/types').Invitation>(`/workspaces/${workspaceId}/invitations`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    });
+  }
+
+  async getWorkspaceInvitations(workspaceId: string) {
+    return this.request<Array<import('@/types').Invitation>>(`/workspaces/${workspaceId}/invitations`);
+  }
+
+  async cancelInvitation(workspaceId: string, invitationId: string) {
+    return this.request<{ message: string }>(`/workspaces/${workspaceId}/invitations/${invitationId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getInvitationByToken(token: string) {
+    return this.request<import('@/types').Invitation>(`/invitations/${token}`);
+  }
+
+  async acceptInvitation(token: string) {
+    return this.request<{ workspace: import('@/types').Workspace }>(`/invitations/${token}/accept`, {
+      method: 'POST',
+    });
+  }
+
+  // Unsubscribe
+  async unsubscribe(token: string) {
+    return this.request<{ email: string; message: string }>('/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async resubscribe(token: string) {
+    return this.request<{ email: string; message: string }>('/unsubscribe/resubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
 }
 
 export const api = new ApiClient();

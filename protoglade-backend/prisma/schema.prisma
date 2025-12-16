@@ -7,15 +7,17 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String?
-  createdAt DateTime @default(now())
+  id                String   @id @default(uuid())
+  email             String   @unique
+  password          String
+  name              String?
+  emailUnsubscribed Boolean  @default(false)
+  createdAt         DateTime @default(now())
 
-  workspaces    WorkspaceMember[]
-  assignedTasks Task[]
-  comments      Comment[]
+  workspaces      WorkspaceMember[]
+  assignedTasks   Task[]
+  comments        Comment[]
+  sentInvitations WorkspaceInvitation[]
 }
 
 model Workspace {
@@ -24,8 +26,9 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
-  members   WorkspaceMember[]
-  projects  Project[]
+  members     WorkspaceMember[]
+  projects    Project[]
+  invitations WorkspaceInvitation[]
 }
 
 model WorkspaceMember {
@@ -86,4 +89,22 @@ model Comment {
   
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceInvitation {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  role      String   @default("member")  // "admin", "member"
+  status    String   @default("pending") // "pending", "accepted", "expired"
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  invitedById String
+  invitedBy   User      @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  
+  @@unique([email, workspaceId])  // Only one pending invite per email per workspace
 }

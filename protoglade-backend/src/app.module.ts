@@ -7,9 +7,11 @@ import { WorkspaceModule } from './workspace/workspace.module';
 import { ProjectModule } from './project/project.module';
 import { TaskModule } from './task/task.module';
 import { CommentModule } from './comment/comment.module';
+import { InvitationModule } from './invitation/invitation.module';
+import { UnsubscribeModule } from './unsubscribe/unsubscribe.module';
 
 @Module({
-  imports: [AuthModule, WorkspaceModule, ProjectModule, TaskModule, CommentModule],
+  imports: [AuthModule, WorkspaceModule, ProjectModule, TaskModule, CommentModule, InvitationModule, UnsubscribeModule],
   controllers: [AppController],
   providers: [AppService, PrismaService],
 })

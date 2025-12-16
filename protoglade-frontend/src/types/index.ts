@@ -60,3 +60,16 @@ export interface Comment {
   author: User;
 }
 
+// Invitation types
+export interface Invitation {
+  id: string;
+  email: string;
+  token: string;
+  role: 'admin' | 'member';
+  status: 'pending' | 'accepted' | 'expired';
+  expiresAt: string;
+  createdAt: string;
+  workspace: { id: string; name: string };
+  invitedBy: { id: string; name: string | null; email: string };
+}
+
