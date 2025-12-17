@@ -49,28 +49,35 @@ export class InvitationService {
       }
     }
 
-    // Check for existing pending invitation
+    // Check for existing invitation
     const existingInvite = await this.prisma.workspaceInvitation.findUnique({
       where: { email_workspaceId: { email, workspaceId } },
     });
 
-    if (existingInvite && existingInvite.status === 'pending') {
-      // Resend the existing invitation
-      const workspace = await this.prisma.workspace.findUnique({
-        where: { id: workspaceId },
-      });
-      const inviter = await this.prisma.user.findUnique({
-        where: { id: inviterId },
-      });
+    if (existingInvite) {
+      if (existingInvite.status === 'pending') {
+        // Resend the existing pending invitation
+        const workspace = await this.prisma.workspace.findUnique({
+          where: { id: workspaceId },
+        });
+        const inviter = await this.prisma.user.findUnique({
+          where: { id: inviterId },
+        });
 
-      await this.emailService.sendWorkspaceInvitation(
-        email,
-        inviter?.name || inviter?.email || 'A team member',
-        workspace?.name || 'a workspace',
-        existingInvite.token,
-      );
+        await this.emailService.sendWorkspaceInvitation(
+          email,
+          inviter?.name || inviter?.email || 'A team member',
+          workspace?.name || 'a workspace',
+          existingInvite.token,
+        );
 
-      return existingInvite;
+        return existingInvite;
+      } else {
+        // Delete old accepted/expired invitation and create a new one
+        await this.prisma.workspaceInvitation.delete({
+          where: { id: existingInvite.id },
+        });
+      }
     }
 
     // Generate unique token

@@ -22,6 +22,9 @@ export default function WorkspacePage() {
   const [activeTab, setActiveTab] = useState<TabType>('projects');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -108,6 +111,52 @@ export default function WorkspacePage() {
     } catch (error) {
       console.error('Failed to cancel invitation:', error);
     }
+  };
+
+  const handleRemoveMemberClick = (userId: string, userName: string) => {
+    setMemberToRemove({ id: userId, name: userName });
+    setShowRemoveModal(true);
+  };
+
+  const handleConfirmRemoveMember = async () => {
+    if (!memberToRemove) return;
+
+    setIsRemoving(true);
+    try {
+      await api.removeMember(workspaceId, memberToRemove.id);
+      // Update the workspace members list
+      if (workspace) {
+        setWorkspace({
+          ...workspace,
+          members: workspace.members.filter(m => m.user.id !== memberToRemove.id),
+        });
+      }
+      setShowRemoveModal(false);
+      setMemberToRemove(null);
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      alert(error instanceof Error ? error.message : 'Failed to remove member');
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  // Check if the current user can remove a specific member
+  const canRemoveMember = (memberRole: 'owner' | 'admin' | 'member', memberId: string): boolean => {
+    // Can't remove yourself
+    if (memberId === user?.id) return false;
+    
+    // Owner can remove admins and members (not other owners, but there's only one owner)
+    if (workspace?.myRole === 'owner') {
+      return memberRole !== 'owner';
+    }
+    
+    // Admin can only remove members
+    if (workspace?.myRole === 'admin') {
+      return memberRole === 'member';
+    }
+    
+    return false;
   };
 
   if (authLoading || isLoading || !user) {
@@ -285,24 +334,11 @@ export default function WorkspacePage() {
         {/* Members Tab Content */}
         {activeTab === 'members' && (
           <>
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-xl font-bold">Team Members</h2>
-                <p className="text-[var(--color-text-muted)] mt-1">
-                  People who have access to this workspace
-                </p>
-              </div>
-              {(workspace?.myRole === 'owner' || workspace?.myRole === 'admin') && (
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="btn btn-primary"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                  </svg>
-                  Invite Member
-                </button>
-              )}
+            <div className="mb-8">
+              <h2 className="text-xl font-bold">Team Members</h2>
+              <p className="text-[var(--color-text-muted)] mt-1">
+                People who have access to this workspace
+              </p>
             </div>
 
             {/* Members List */}
@@ -338,7 +374,7 @@ export default function WorkspacePage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-xs text-[var(--color-text-muted)]">
+                        <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
                           Joined {new Date(member.joinedAt).toLocaleDateString()}
                         </span>
                         <span className={`badge ${
@@ -353,6 +389,17 @@ export default function WorkspacePage() {
                           )}
                           {member.role}
                         </span>
+                        {canRemoveMember(member.role, member.user.id) && (
+                          <button
+                            onClick={() => handleRemoveMemberClick(member.user.id, member.user.name || member.user.email)}
+                            className="text-sm text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-500/10"
+                            title="Remove member"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -531,6 +578,48 @@ export default function WorkspacePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Member Confirmation Modal */}
+      {showRemoveModal && memberToRemove && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="card w-full max-w-md">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold">Remove Member</h3>
+            </div>
+            
+            <p className="text-[var(--color-text-muted)] mb-6">
+              Are you sure you want to remove <span className="font-semibold text-[var(--color-text)]">{memberToRemove.name}</span> from this workspace? This action cannot be undone.
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRemoveModal(false);
+                  setMemberToRemove(null);
+                }}
+                className="btn btn-secondary"
+                disabled={isRemoving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemoveMember}
+                disabled={isRemoving}
+                className="btn bg-red-500 hover:bg-red-600 text-white border-red-500 hover:border-red-600"
+              >
+                {isRemoving ? 'Removing...' : 'Remove Member'}
+              </button>
+            </div>
           </div>
         </div>
       )}

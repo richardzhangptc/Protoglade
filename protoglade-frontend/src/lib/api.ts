@@ -95,6 +95,12 @@ class ApiClient {
     });
   }
 
+  async removeMember(workspaceId: string, userId: string) {
+    return this.request<{ message: string }>(`/workspaces/${workspaceId}/members/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Projects
   async getProjects(workspaceId: string) {
     return this.request<Array<import('@/types').Project>>(`/projects?workspaceId=${workspaceId}`);
