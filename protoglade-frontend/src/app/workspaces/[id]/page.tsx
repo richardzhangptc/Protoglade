@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Workspace, Project, Invitation } from '@/types';
+import Footer from '@/components/Footer';
 
 type TabType = 'projects' | 'members';
 
@@ -168,9 +169,9 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)] mb-2">
             <Link href="/dashboard" className="hover:text-[var(--color-text)]">
@@ -181,7 +182,7 @@ export default function WorkspacePage() {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] flex items-center justify-center text-[var(--color-text)] font-bold">
                 {workspace?.name.charAt(0).toUpperCase()}
               </div>
               <div>
@@ -256,7 +257,7 @@ export default function WorkspacePage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-1 max-w-7xl mx-auto px-6 py-8 w-full">
         {/* Projects Tab Content */}
         {activeTab === 'projects' && (
           <>
@@ -623,6 +624,8 @@ export default function WorkspacePage() {
           </div>
         </div>
       )}
+
+      <Footer />
     </div>
   );
 }

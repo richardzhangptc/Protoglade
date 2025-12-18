@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Project, Task } from '@/types';
+import Footer from '@/components/Footer';
 import {
   DndContext,
   DragOverlay,
@@ -321,7 +322,7 @@ export default function ProjectPage() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)] mb-2">
             <Link href="/dashboard" className="hover:text-[var(--color-text)]">
@@ -520,6 +521,8 @@ export default function ProjectPage() {
           </div>
         </div>
       )}
+
+      <Footer />
     </div>
   );
 }

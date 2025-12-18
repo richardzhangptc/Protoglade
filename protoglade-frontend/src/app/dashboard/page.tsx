@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Workspace } from '@/types';
+import Footer from '@/components/Footer';
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading, logout } = useAuth();
@@ -65,20 +66,25 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            Protoglade
-          </h1>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-[var(--color-primary)] rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-[var(--color-text)]" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
+            </div>
+            <span className="text-xl font-bold text-[var(--color-text)] tracking-tight">Protoglade</span>
+          </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-[var(--color-text-muted)]">
               {user.name || user.email}
             </span>
             <button
               onClick={logout}
-              className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors font-medium"
             >
               Sign out
             </button>
@@ -87,10 +93,10 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-1 max-w-7xl mx-auto px-6 py-8 w-full">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold">Your Workspaces</h2>
+            <h2 className="text-2xl font-bold text-[var(--color-text)]">Your Workspaces</h2>
             <p className="text-[var(--color-text-muted)] mt-1">
               Select a workspace to view projects and tasks
             </p>
@@ -112,12 +118,12 @@ export default function DashboardPage() {
           </div>
         ) : workspaces.length === 0 ? (
           <div className="card text-center py-16">
-            <div className="w-16 h-16 rounded-full bg-[var(--color-surface-hover)] flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 rounded-full bg-[var(--color-primary)]/20 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-[var(--color-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold mb-2">No workspaces yet</h3>
+            <h3 className="text-lg font-semibold mb-2 text-[var(--color-text)]">No workspaces yet</h3>
             <p className="text-[var(--color-text-muted)] mb-6">
               Create your first workspace to get started
             </p>
@@ -134,10 +140,10 @@ export default function DashboardPage() {
               <Link
                 key={workspace.id}
                 href={`/workspaces/${workspace.id}`}
-                className="card hover:border-[var(--color-primary)] transition-colors group"
+                className="card hover:border-[var(--color-primary)] hover:shadow-md transition-all group"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-hover)] flex items-center justify-center text-[var(--color-text)] font-bold">
                     {workspace.name.charAt(0).toUpperCase()}
                   </div>
                   <span className={`badge ${
@@ -148,7 +154,7 @@ export default function DashboardPage() {
                     {workspace.myRole}
                   </span>
                 </div>
-                <h3 className="font-semibold mb-1 group-hover:text-[var(--color-primary)] transition-colors">
+                <h3 className="font-semibold mb-1 text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors">
                   {workspace.name}
                 </h3>
                 <p className="text-sm text-[var(--color-text-muted)]">
@@ -194,6 +200,8 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <Footer />
     </div>
   );
 }

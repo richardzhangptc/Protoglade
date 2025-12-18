@@ -6,8 +6,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Protoglade - Collaborative Workspace",
-  description: "A modern collaborative workspace for teams",
+  title: "Protoglade - Project Management for Dev Teams",
+  description: "Lightweight project management designed for small dev teams",
 };
 
 export default function RootLayout({

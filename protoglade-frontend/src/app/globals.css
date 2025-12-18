@@ -1,17 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --color-bg: #0a0a0f;
-  --color-surface: #12121a;
-  --color-surface-hover: #1a1a25;
-  --color-border: #2a2a3a;
-  --color-text: #e4e4e7;
-  --color-text-muted: #71717a;
-  --color-primary: #6366f1;
-  --color-primary-hover: #818cf8;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  /* Light theme as default */
+  --color-bg: #FFFBF5;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #F5F5F5;
+  --color-border: #E5E5E5;
+  --color-text: #2B2B2B;
+  --color-text-muted: #6B6B6B;
+  --color-primary: #FFD43B;
+  --color-primary-hover: #FFC800;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
 }
 
 * {
@@ -22,6 +23,8 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Custom scrollbar */
@@ -31,16 +34,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface);
+  background: #F5F5F5;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: #D4D4D4;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a4a;
+  background: #A3A3A3;
 }
 
 /* Focus styles */
@@ -49,7 +52,7 @@ body {
   outline-offset: 2px;
 }
 
-/* Input styles */
+/* Input styles - Light mode default */
 input, textarea, select {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -62,11 +65,11 @@ input, textarea, select {
 
 input:focus, textarea:focus, select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 0 3px rgba(255, 212, 59, 0.2);
 }
 
 input::placeholder, textarea::placeholder {
-  color: var(--color-text-muted);
+  color: #A8A8A8;
 }
 
 /* Button base */
@@ -85,7 +88,7 @@ input::placeholder, textarea::placeholder {
 
 .btn-primary {
   background: var(--color-primary);
-  color: white;
+  color: #2B2B2B;
 }
 
 .btn-primary:hover {
@@ -100,6 +103,7 @@ input::placeholder, textarea::placeholder {
 
 .btn-secondary:hover {
   background: var(--color-surface-hover);
+  border-color: #D4D4D4;
 }
 
 .btn-danger {
@@ -108,7 +112,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .btn-danger:hover {
-  background: #dc2626;
+  background: #DC2626;
 }
 
 .btn:disabled {
@@ -116,15 +120,16 @@ input::placeholder, textarea::placeholder {
   cursor: not-allowed;
 }
 
-/* Card */
+/* Card - Light mode */
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* Status badges */
+/* Status badges - Light mode friendly */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -135,36 +140,70 @@ input::placeholder, textarea::placeholder {
 }
 
 .badge-todo {
-  background: rgba(113, 113, 122, 0.2);
-  color: #a1a1aa;
+  background: #F5F5F5;
+  color: #737373;
 }
 
 .badge-in-progress {
-  background: rgba(99, 102, 241, 0.2);
-  color: #a5b4fc;
+  background: #EFF6FF;
+  color: #2563EB;
 }
 
 .badge-done {
-  background: rgba(34, 197, 94, 0.2);
-  color: #86efac;
+  background: #F0FDF4;
+  color: #16A34A;
 }
 
 .badge-low {
-  background: rgba(113, 113, 122, 0.2);
-  color: #a1a1aa;
+  background: #F5F5F5;
+  color: #737373;
 }
 
 .badge-medium {
-  background: rgba(59, 130, 246, 0.2);
-  color: #93c5fd;
+  background: #EFF6FF;
+  color: #2563EB;
 }
 
 .badge-high {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fcd34d;
+  background: #FEF3C7;
+  color: #D97706;
 }
 
 .badge-urgent {
-  background: rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
+  background: #FEF2F2;
+  color: #DC2626;
+}
+
+/* ========================================
+   Dark Mode Override (for footer only)
+   ======================================== */
+.dark-mode {
+  --color-bg: #0F0F12;
+  --color-surface: #18181B;
+  --color-surface-hover: #27272A;
+  --color-border: #3F3F46;
+  --color-text: #FAFAFA;
+  --color-text-muted: #A1A1AA;
+  
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.dark-mode .card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.dark-mode input,
+.dark-mode textarea,
+.dark-mode select {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.dark-mode input::placeholder,
+.dark-mode textarea::placeholder {
+  color: var(--color-text-muted);
 }
