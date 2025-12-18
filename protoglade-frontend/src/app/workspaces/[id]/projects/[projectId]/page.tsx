@@ -1,11 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Project, Task } from '@/types';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent,
+  useDroppable,
+  rectIntersection,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const statusColors: Record<string, string> = {
   todo: 'badge-todo',
@@ -19,6 +40,14 @@ const priorityColors: Record<string, string> = {
   high: 'badge-high',
   urgent: 'badge-urgent',
 };
+
+type TaskStatus = 'todo' | 'in_progress' | 'done';
+
+const COLUMNS: { id: TaskStatus; title: string; color: string }[] = [
+  { id: 'todo', title: 'To Do', color: 'bg-zinc-500' },
+  { id: 'in_progress', title: 'In Progress', color: 'bg-indigo-500' },
+  { id: 'done', title: 'Done', color: 'bg-green-500' },
+];
 
 export default function ProjectPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -34,6 +63,18 @@ export default function ProjectPage() {
   const [newTask, setNewTask] = useState({ title: '', description: '', priority: 'medium' });
   const [isCreating, setIsCreating] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -83,7 +124,7 @@ export default function ProjectPage() {
     }
   };
 
-  const handleUpdateTaskStatus = async (taskId: string, status: 'todo' | 'in_progress' | 'done') => {
+  const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
     try {
       const updated = await api.updateTask(taskId, { status });
       setTasks(tasks.map((t) => (t.id === taskId ? updated : t)));
@@ -105,6 +146,170 @@ export default function ProjectPage() {
     }
   };
 
+  // Group tasks by status with stable sorting
+  const tasksByStatus = useMemo(() => {
+    const grouped: Record<TaskStatus, Task[]> = {
+      todo: [],
+      in_progress: [],
+      done: [],
+    };
+    tasks.forEach((task) => {
+      if (grouped[task.status]) {
+        grouped[task.status].push(task);
+      }
+    });
+    // Sort by position within each status
+    Object.keys(grouped).forEach((status) => {
+      grouped[status as TaskStatus].sort((a, b) => a.position - b.position);
+    });
+    return grouped;
+  }, [tasks]);
+
+  // All task IDs for global SortableContext
+  const allTaskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const task = tasks.find((t) => t.id === active.id);
+    if (task) {
+      setActiveTask(task);
+    }
+  };
+
+  const findColumnByTaskId = (taskId: string): TaskStatus | null => {
+    const task = tasks.find((t) => t.id === taskId);
+    return task ? task.status : null;
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveTask(null);
+
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    const activeTask = tasks.find((t) => t.id === activeId);
+    if (!activeTask) return;
+
+    // Determine if we're dropping on a column or a task
+    const isOverColumn = COLUMNS.some((col) => col.id === overId);
+    const overTask = tasks.find((t) => t.id === overId);
+
+    let targetStatus: TaskStatus;
+    
+    if (isOverColumn) {
+      // Dropped directly on a column
+      targetStatus = overId as TaskStatus;
+    } else if (overTask) {
+      // Dropped on a task - use that task's column
+      targetStatus = overTask.status;
+    } else {
+      // Fallback - keep current status
+      targetStatus = activeTask.status;
+    }
+
+    const sourceStatus = activeTask.status;
+    const isSameColumn = sourceStatus === targetStatus;
+
+    // Get tasks in the source and target columns
+    const sourceColumnTasks = tasksByStatus[sourceStatus].filter((t) => t.id !== activeId);
+    const targetColumnTasks = isSameColumn
+      ? tasksByStatus[targetStatus]
+      : tasksByStatus[targetStatus];
+
+    let newPosition: number;
+
+    if (isOverColumn) {
+      // Dropped on column header/empty area - add at end
+      const lastTask = targetColumnTasks[targetColumnTasks.length - 1];
+      newPosition = lastTask ? lastTask.position + 1000 : 1000;
+    } else if (overTask) {
+      // Dropped on a specific task
+      const overTaskIndex = targetColumnTasks.findIndex((t) => t.id === overId);
+      const activeTaskIndex = targetColumnTasks.findIndex((t) => t.id === activeId);
+
+      if (isSameColumn) {
+        // Reordering within the same column
+        if (activeTaskIndex === overTaskIndex) {
+          // Dropped on itself - no change
+          return;
+        }
+
+        // Use arrayMove logic for position calculation
+        const movingDown = activeTaskIndex < overTaskIndex;
+
+        if (movingDown) {
+          // Moving down - place after the target
+          const targetTask = targetColumnTasks[overTaskIndex];
+          const nextTask = targetColumnTasks[overTaskIndex + 1];
+          if (nextTask) {
+            newPosition = (targetTask.position + nextTask.position) / 2;
+          } else {
+            newPosition = targetTask.position + 1000;
+          }
+        } else {
+          // Moving up - place before the target
+          const targetTask = targetColumnTasks[overTaskIndex];
+          const prevTask = targetColumnTasks[overTaskIndex - 1];
+          if (prevTask) {
+            newPosition = (prevTask.position + targetTask.position) / 2;
+          } else {
+            newPosition = targetTask.position / 2;
+          }
+        }
+      } else {
+        // Moving to a different column
+        const targetTasksWithoutActive = targetColumnTasks.filter((t) => t.id !== activeId);
+        const overIndex = targetTasksWithoutActive.findIndex((t) => t.id === overId);
+
+        if (overIndex === 0) {
+          // Insert before first task
+          newPosition = targetTasksWithoutActive[0].position / 2;
+        } else if (overIndex > 0) {
+          // Insert between tasks
+          const prevPosition = targetTasksWithoutActive[overIndex - 1].position;
+          const nextPosition = targetTasksWithoutActive[overIndex].position;
+          newPosition = (prevPosition + nextPosition) / 2;
+        } else {
+          // Insert at end (shouldn't normally happen)
+          const lastTask = targetTasksWithoutActive[targetTasksWithoutActive.length - 1];
+          newPosition = lastTask ? lastTask.position + 1000 : 1000;
+        }
+      }
+    } else {
+      // Fallback
+      return;
+    }
+
+    // Check if anything actually changed
+    if (isSameColumn && Math.abs(newPosition - activeTask.position) < 0.001) {
+      return;
+    }
+
+    // Update local state immediately for smooth UX
+    setTasks((prevTasks) =>
+      prevTasks.map((t) =>
+        t.id === activeId
+          ? { ...t, status: targetStatus, position: newPosition }
+          : t
+      )
+    );
+
+    // Persist to backend
+    try {
+      await api.updateTask(activeId, {
+        status: targetStatus,
+        position: newPosition,
+      });
+    } catch (error) {
+      console.error('Failed to update task position:', error);
+      // Reload to get correct state
+      loadData();
+    }
+  };
+
   if (authLoading || isLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -112,10 +317,6 @@ export default function ProjectPage() {
       </div>
     );
   }
-
-  const todoTasks = tasks.filter((t) => t.status === 'todo');
-  const inProgressTasks = tasks.filter((t) => t.status === 'in_progress');
-  const doneTasks = tasks.filter((t) => t.status === 'done');
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -157,61 +358,29 @@ export default function ProjectPage() {
 
       {/* Kanban Board */}
       <main className="flex-1 overflow-x-auto p-6">
-        <div className="flex gap-4 min-h-full" style={{ minWidth: 'max-content' }}>
-          {/* Todo Column */}
-          <div className="w-80 flex-shrink-0">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="w-3 h-3 rounded-full bg-zinc-500" />
-              <h3 className="font-semibold">To Do</h3>
-              <span className="text-sm text-[var(--color-text-muted)]">({todoTasks.length})</span>
-            </div>
-            <div className="space-y-3">
-              {todoTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onClick={() => setSelectedTask(task)}
-                />
-              ))}
-            </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={rectIntersection}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex gap-4 min-h-full" style={{ minWidth: 'max-content' }}>
+            {COLUMNS.map((column) => (
+              <KanbanColumn
+                key={column.id}
+                column={column}
+                tasks={tasksByStatus[column.id]}
+                onTaskClick={setSelectedTask}
+              />
+            ))}
           </div>
 
-          {/* In Progress Column */}
-          <div className="w-80 flex-shrink-0">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="w-3 h-3 rounded-full bg-indigo-500" />
-              <h3 className="font-semibold">In Progress</h3>
-              <span className="text-sm text-[var(--color-text-muted)]">({inProgressTasks.length})</span>
-            </div>
-            <div className="space-y-3">
-              {inProgressTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onClick={() => setSelectedTask(task)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Done Column */}
-          <div className="w-80 flex-shrink-0">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="w-3 h-3 rounded-full bg-green-500" />
-              <h3 className="font-semibold">Done</h3>
-              <span className="text-sm text-[var(--color-text-muted)]">({doneTasks.length})</span>
-            </div>
-            <div className="space-y-3">
-              {doneTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onClick={() => setSelectedTask(task)}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
+          <DragOverlay dropAnimation={null}>
+            {activeTask ? (
+              <TaskCard task={activeTask} isOverlay />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </main>
 
       {/* Create Task Modal */}
@@ -355,11 +524,112 @@ export default function ProjectPage() {
   );
 }
 
-function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
+// Kanban Column Component with useDroppable
+function KanbanColumn({
+  column,
+  tasks,
+  onTaskClick,
+}: {
+  column: { id: TaskStatus; title: string; color: string };
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+    data: {
+      type: 'column',
+      status: column.id,
+    },
+  });
+
+  const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+
   return (
-    <button
+    <div className="w-80 flex-shrink-0">
+      <div className="flex items-center gap-2 mb-4 px-2">
+        <span className={`w-3 h-3 rounded-full ${column.color}`} />
+        <h3 className="font-semibold">{column.title}</h3>
+        <span className="text-sm text-[var(--color-text-muted)]">({tasks.length})</span>
+      </div>
+      <div
+        ref={setNodeRef}
+        className={`rounded-xl p-2 min-h-[200px] transition-colors ${
+          isOver ? 'bg-[var(--color-surface-hover)]' : ''
+        }`}
+      >
+        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3">
+            {tasks.map((task) => (
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                onClick={() => onTaskClick(task)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </div>
+    </div>
+  );
+}
+
+// Sortable Task Card Wrapper
+function SortableTaskCard({
+  task,
+  onClick,
+}: {
+  task: Task;
+  onClick: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: task.id,
+    data: {
+      type: 'task',
+      task,
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
+      <TaskCard task={task} onClick={onClick} />
+    </div>
+  );
+}
+
+// Task Card Component
+function TaskCard({
+  task,
+  onClick,
+  isOverlay,
+}: {
+  task: Task;
+  onClick?: () => void;
+  isOverlay?: boolean;
+}) {
+  return (
+    <div
       onClick={onClick}
-      className="card w-full text-left hover:border-[var(--color-primary)] transition-colors"
+      className={`card w-full text-left hover:border-[var(--color-primary)] transition-all cursor-grab active:cursor-grabbing ${
+        isOverlay ? 'shadow-2xl rotate-2 scale-105' : ''
+      }`}
     >
       <h4 className="font-medium mb-2">{task.title}</h4>
       {task.description && (
@@ -380,7 +650,6 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
           </span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
-
