@@ -1,0 +1,334 @@
+'use client';
+
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { io, Socket } from 'socket.io-client';
+import throttle from 'lodash.throttle';
+import { api } from '@/lib/api';
+import { Task } from '@/types';
+
+export interface OnlineUser {
+  id: string;
+  email: string;
+  name: string | null;
+  color: string;
+}
+
+export interface TaskSyncEvent {
+  projectId: string;
+  task: Task;
+  createdBy?: OnlineUser;
+  updatedBy?: OnlineUser;
+}
+
+export interface TaskDeleteEvent {
+  projectId: string;
+  taskId: string;
+  deletedBy?: OnlineUser;
+}
+
+export interface RemoteCursor {
+  odataId: string;
+  user: OnlineUser;
+  x: number;
+  y: number;
+  isDragging: boolean;
+  dragTaskId: string | null;
+  dragTaskTitle: string | null;
+  lastUpdate: number;
+}
+
+interface CursorMoveEvent {
+  odataId: string;
+  user: OnlineUser;
+  x: number;
+  y: number;
+  isDragging: boolean;
+  dragTaskId: string | null;
+  dragTaskTitle: string | null;
+}
+
+interface CursorLeaveEvent {
+  odataId: string;
+}
+
+const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const CURSOR_THROTTLE_MS = 50; // 20 updates per second max
+const CURSOR_TIMEOUT_MS = 5000; // Remove cursor if no update for 5 seconds
+
+interface UsePresenceOptions {
+  onTaskCreated?: (event: TaskSyncEvent) => void;
+  onTaskUpdated?: (event: TaskSyncEvent) => void;
+  onTaskDeleted?: (event: TaskDeleteEvent) => void;
+}
+
+export function usePresence(projectId: string | null, options?: UsePresenceOptions) {
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+  const [remoteCursors, setRemoteCursors] = useState<Map<string, RemoteCursor>>(new Map());
+  const [isConnected, setIsConnected] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
+  const currentProjectIdRef = useRef<string | null>(null);
+  const optionsRef = useRef(options);
+
+  // Keep options ref updated
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
+
+  const connect = useCallback(() => {
+    const token = api.getToken();
+    if (!token) {
+      console.log('No token available for WebSocket connection');
+      return null;
+    }
+
+    const socket = io(`${SOCKET_URL}/presence`, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on('connect', () => {
+      console.log('WebSocket connected');
+      setIsConnected(true);
+      
+      // Rejoin the current project if we had one
+      if (currentProjectIdRef.current) {
+        socket.emit('presence:join', { projectId: currentProjectIdRef.current });
+      }
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('WebSocket disconnected:', reason);
+      setIsConnected(false);
+      setRemoteCursors(new Map()); // Clear cursors on disconnect
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('WebSocket connection error:', error.message);
+      setIsConnected(false);
+    });
+
+    // Presence events
+    socket.on('presence:update', (data: { projectId: string; users: OnlineUser[] }) => {
+      if (data.projectId === currentProjectIdRef.current) {
+        setOnlineUsers(data.users);
+      }
+    });
+
+    // Task sync events
+    socket.on('task:created', (event: TaskSyncEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        console.log('Received task:created event', event);
+        optionsRef.current?.onTaskCreated?.(event);
+      }
+    });
+
+    socket.on('task:updated', (event: TaskSyncEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        console.log('Received task:updated event', event);
+        optionsRef.current?.onTaskUpdated?.(event);
+      }
+    });
+
+    socket.on('task:deleted', (event: TaskDeleteEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        console.log('Received task:deleted event', event);
+        optionsRef.current?.onTaskDeleted?.(event);
+      }
+    });
+
+    // Cursor events
+    socket.on('cursor:move', (event: CursorMoveEvent) => {
+      setRemoteCursors((prev) => {
+        const next = new Map(prev);
+        next.set(event.odataId, {
+          ...event,
+          lastUpdate: Date.now(),
+        });
+        return next;
+      });
+    });
+
+    socket.on('cursor:leave', (event: CursorLeaveEvent) => {
+      setRemoteCursors((prev) => {
+        const next = new Map(prev);
+        next.delete(event.odataId);
+        return next;
+      });
+    });
+
+    return socket;
+  }, []);
+
+  useEffect(() => {
+    // Connect to WebSocket
+    const socket = connect();
+    if (socket) {
+      socketRef.current = socket;
+    }
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, [connect]);
+
+  useEffect(() => {
+    if (!socketRef.current || !projectId) return;
+
+    currentProjectIdRef.current = projectId;
+
+    // Join the project room
+    if (socketRef.current.connected) {
+      socketRef.current.emit(
+        'presence:join',
+        { projectId },
+        (response: { users: OnlineUser[] }) => {
+          if (response?.users) {
+            setOnlineUsers(response.users);
+          }
+        }
+      );
+    }
+
+    return () => {
+      // Emit cursor leave before leaving project
+      if (socketRef.current?.connected && currentProjectIdRef.current) {
+        socketRef.current.emit('cursor:leave', { projectId: currentProjectIdRef.current });
+        socketRef.current.emit('presence:leave', { projectId: currentProjectIdRef.current });
+      }
+      currentProjectIdRef.current = null;
+      setOnlineUsers([]);
+      setRemoteCursors(new Map());
+    };
+  }, [projectId]);
+
+  // Heartbeat to keep connection alive
+  useEffect(() => {
+    if (!socketRef.current) return;
+
+    const interval = setInterval(() => {
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('presence:heartbeat');
+      }
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Clean up stale cursors periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRemoteCursors((prev) => {
+        const now = Date.now();
+        let hasChanges = false;
+        const next = new Map(prev);
+        
+        for (const [id, cursor] of next) {
+          if (now - cursor.lastUpdate > CURSOR_TIMEOUT_MS) {
+            next.delete(id);
+            hasChanges = true;
+          }
+        }
+        
+        return hasChanges ? next : prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Methods to emit task sync events
+  const emitTaskCreated = useCallback((task: Task) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('task:created', {
+        projectId: currentProjectIdRef.current,
+        task,
+      });
+    }
+  }, []);
+
+  const emitTaskUpdated = useCallback((task: Task) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('task:updated', {
+        projectId: currentProjectIdRef.current,
+        task,
+      });
+    }
+  }, []);
+
+  const emitTaskDeleted = useCallback((taskId: string) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('task:deleted', {
+        projectId: currentProjectIdRef.current,
+        taskId,
+      });
+    }
+  }, []);
+
+  // Throttled cursor move emitter
+  const emitCursorMoveThrottled = useMemo(
+    () =>
+      throttle(
+        (data: {
+          x: number;
+          y: number;
+          isDragging: boolean;
+          dragTaskId: string | null;
+          dragTaskTitle: string | null;
+        }) => {
+          if (socketRef.current?.connected && currentProjectIdRef.current) {
+            socketRef.current.emit('cursor:move', {
+              projectId: currentProjectIdRef.current,
+              ...data,
+            });
+          }
+        },
+        CURSOR_THROTTLE_MS,
+        { leading: true, trailing: true }
+      ),
+    []
+  );
+
+  const emitCursorMove = useCallback(
+    (data: {
+      x: number;
+      y: number;
+      isDragging: boolean;
+      dragTaskId: string | null;
+      dragTaskTitle: string | null;
+    }) => {
+      emitCursorMoveThrottled(data);
+    },
+    [emitCursorMoveThrottled]
+  );
+
+  const emitCursorLeave = useCallback(() => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('cursor:leave', {
+        projectId: currentProjectIdRef.current,
+      });
+    }
+  }, []);
+
+  // Convert Map to array for easier consumption
+  const remoteCursorsArray = useMemo(
+    () => Array.from(remoteCursors.values()),
+    [remoteCursors]
+  );
+
+  return {
+    onlineUsers,
+    isConnected,
+    remoteCursors: remoteCursorsArray,
+    emitTaskCreated,
+    emitTaskUpdated,
+    emitTaskDeleted,
+    emitCursorMove,
+    emitCursorLeave,
+  };
+}

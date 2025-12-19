@@ -9,9 +9,19 @@ import { TaskModule } from './task/task.module';
 import { CommentModule } from './comment/comment.module';
 import { InvitationModule } from './invitation/invitation.module';
 import { UnsubscribeModule } from './unsubscribe/unsubscribe.module';
+import { PresenceModule } from './presence/presence.module';
 
 @Module({
-  imports: [AuthModule, WorkspaceModule, ProjectModule, TaskModule, CommentModule, InvitationModule, UnsubscribeModule],
+  imports: [
+    AuthModule,
+    WorkspaceModule,
+    ProjectModule,
+    TaskModule,
+    CommentModule,
+    InvitationModule,
+    UnsubscribeModule,
+    PresenceModule,
+  ],
   controllers: [AppController],
   providers: [AppService, PrismaService],
 })

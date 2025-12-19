@@ -1,12 +1,16 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Project, Task } from '@/types';
 import Footer from '@/components/Footer';
+import { usePresence, TaskSyncEvent, TaskDeleteEvent } from '@/hooks/usePresence';
+import { OnlineUsers } from '@/components/OnlineUsers';
+import { RemoteCursors, getRemoteDraggedTaskIds, RemoteDragIndicator } from '@/components/RemoteCursors';
+import { RemoteCursor } from '@/hooks/usePresence';
 import {
   DndContext,
   DragOverlay,
@@ -66,6 +70,52 @@ export default function ProjectPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
+  // Real-time task sync handlers
+  const handleRemoteTaskCreated = useCallback((event: TaskSyncEvent) => {
+    setTasks((prev) => {
+      // Check if task already exists (avoid duplicates)
+      if (prev.some((t) => t.id === event.task.id)) {
+        return prev;
+      }
+      return [...prev, event.task];
+    });
+  }, []);
+
+  const handleRemoteTaskUpdated = useCallback((event: TaskSyncEvent) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === event.task.id ? event.task : t))
+    );
+    // Also update selected task if it's the one being updated
+    setSelectedTask((prev) =>
+      prev?.id === event.task.id ? event.task : prev
+    );
+  }, []);
+
+  const handleRemoteTaskDeleted = useCallback((event: TaskDeleteEvent) => {
+    setTasks((prev) => prev.filter((t) => t.id !== event.taskId));
+    // Close sidebar if the deleted task was selected
+    setSelectedTask((prev) => (prev?.id === event.taskId ? null : prev));
+  }, []);
+
+  // Real-time presence and task sync
+  const {
+    onlineUsers,
+    isConnected,
+    remoteCursors,
+    emitTaskCreated,
+    emitTaskUpdated,
+    emitTaskDeleted,
+    emitCursorMove,
+    emitCursorLeave,
+  } = usePresence(projectId, {
+    onTaskCreated: handleRemoteTaskCreated,
+    onTaskUpdated: handleRemoteTaskUpdated,
+    onTaskDeleted: handleRemoteTaskDeleted,
+  });
+
+  // Ref for the kanban board container (for cursor tracking)
+  const boardRef = useRef<HTMLElement | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -118,6 +168,9 @@ export default function ProjectPage() {
       setTasks([...tasks, task]);
       setNewTask({ title: '', description: '', priority: 'medium' });
       setShowCreateModal(false);
+      
+      // Broadcast to other users
+      emitTaskCreated(task);
     } catch (error) {
       console.error('Failed to create task:', error);
     } finally {
@@ -132,6 +185,9 @@ export default function ProjectPage() {
       if (selectedTask?.id === taskId) {
         setSelectedTask(updated);
       }
+      
+      // Broadcast to other users
+      emitTaskUpdated(updated);
     } catch (error) {
       console.error('Failed to update task:', error);
     }
@@ -142,6 +198,9 @@ export default function ProjectPage() {
       await api.deleteTask(taskId);
       setTasks(tasks.filter((t) => t.id !== taskId));
       setSelectedTask(null);
+      
+      // Broadcast to other users
+      emitTaskDeleted(taskId);
     } catch (error) {
       console.error('Failed to delete task:', error);
     }
@@ -176,6 +235,34 @@ export default function ProjectPage() {
       setActiveTask(task);
     }
   };
+
+  // Handle mouse move for cursor tracking
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLElement>) => {
+      if (!boardRef.current) return;
+
+      const rect = boardRef.current.getBoundingClientRect();
+      const scrollLeft = boardRef.current.scrollLeft || 0;
+      const scrollTop = boardRef.current.scrollTop || 0;
+
+      // Calculate position relative to the board container (including scroll)
+      const x = e.clientX - rect.left + scrollLeft;
+      const y = e.clientY - rect.top + scrollTop;
+
+      emitCursorMove({
+        x,
+        y,
+        isDragging: !!activeTask,
+        dragTaskId: activeTask?.id || null,
+        dragTaskTitle: activeTask?.title || null,
+      });
+    },
+    [emitCursorMove, activeTask]
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    emitCursorLeave();
+  }, [emitCursorLeave]);
 
   const findColumnByTaskId = (taskId: string): TaskStatus | null => {
     const task = tasks.find((t) => t.id === taskId);
@@ -300,10 +387,13 @@ export default function ProjectPage() {
 
     // Persist to backend
     try {
-      await api.updateTask(activeId, {
+      const updated = await api.updateTask(activeId, {
         status: targetStatus,
         position: newPosition,
       });
+      
+      // Broadcast to other users
+      emitTaskUpdated(updated);
     } catch (error) {
       console.error('Failed to update task position:', error);
       // Reload to get correct state
@@ -344,21 +434,34 @@ export default function ProjectPage() {
                 </p>
               )}
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn btn-primary"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New Task
-            </button>
+            <div className="flex items-center gap-4">
+              {/* Online users indicator */}
+              <OnlineUsers users={onlineUsers} currentUserId={user?.id} />
+              
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn btn-primary"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New Task
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Kanban Board */}
-      <main className="flex-1 overflow-x-auto p-6">
+      <main
+        ref={boardRef}
+        className="flex-1 overflow-x-auto p-6 relative"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
+        {/* Remote Cursors */}
+        <RemoteCursors cursors={remoteCursors} containerRef={boardRef} />
+
         <DndContext
           sensors={sensors}
           collisionDetection={rectIntersection}
@@ -372,6 +475,7 @@ export default function ProjectPage() {
                 column={column}
                 tasks={tasksByStatus[column.id]}
                 onTaskClick={setSelectedTask}
+                remoteCursors={remoteCursors}
               />
             ))}
           </div>
@@ -532,10 +636,12 @@ function KanbanColumn({
   column,
   tasks,
   onTaskClick,
+  remoteCursors,
 }: {
   column: { id: TaskStatus; title: string; color: string };
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  remoteCursors: RemoteCursor[];
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -546,6 +652,20 @@ function KanbanColumn({
   });
 
   const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+  
+  // Get info about who is dragging each task
+  const remoteDragInfo = useMemo(() => {
+    const info = new Map<string, { userName: string; userColor: string }>();
+    for (const cursor of remoteCursors) {
+      if (cursor.isDragging && cursor.dragTaskId) {
+        info.set(cursor.dragTaskId, {
+          userName: cursor.user.name || cursor.user.email.split('@')[0],
+          userColor: cursor.user.color,
+        });
+      }
+    }
+    return info;
+  }, [remoteCursors]);
 
   return (
     <div className="w-80 flex-shrink-0">
@@ -562,13 +682,19 @@ function KanbanColumn({
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
           <div className="space-y-3">
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id}
-                task={task}
-                onClick={() => onTaskClick(task)}
-              />
-            ))}
+            {tasks.map((task) => {
+              const dragInfo = remoteDragInfo.get(task.id);
+              return (
+                <SortableTaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={() => onTaskClick(task)}
+                  isLockedByRemote={!!dragInfo}
+                  lockedByUserName={dragInfo?.userName}
+                  lockedByUserColor={dragInfo?.userColor}
+                />
+              );
+            })}
           </div>
         </SortableContext>
       </div>
@@ -580,9 +706,15 @@ function KanbanColumn({
 function SortableTaskCard({
   task,
   onClick,
+  isLockedByRemote = false,
+  lockedByUserName,
+  lockedByUserColor,
 }: {
   task: Task;
   onClick: () => void;
+  isLockedByRemote?: boolean;
+  lockedByUserName?: string;
+  lockedByUserColor?: string;
 }) {
   const {
     attributes,
@@ -597,6 +729,7 @@ function SortableTaskCard({
       type: 'task',
       task,
     },
+    disabled: isLockedByRemote, // Disable dragging if someone else is dragging
   });
 
   const style = {
@@ -610,9 +743,15 @@ function SortableTaskCard({
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
+      {...(isLockedByRemote ? {} : listeners)} // Only attach listeners if not locked
     >
-      <TaskCard task={task} onClick={onClick} />
+      <TaskCard 
+        task={task} 
+        onClick={isLockedByRemote ? undefined : onClick}
+        isLockedByRemote={isLockedByRemote}
+        lockedByUserName={lockedByUserName}
+        lockedByUserColor={lockedByUserColor}
+      />
     </div>
   );
 }
@@ -622,18 +761,33 @@ function TaskCard({
   task,
   onClick,
   isOverlay,
+  isLockedByRemote = false,
+  lockedByUserName,
+  lockedByUserColor,
 }: {
   task: Task;
   onClick?: () => void;
   isOverlay?: boolean;
+  isLockedByRemote?: boolean;
+  lockedByUserName?: string;
+  lockedByUserColor?: string;
 }) {
   return (
     <div
       onClick={onClick}
-      className={`card w-full text-left hover:border-[var(--color-primary)] transition-all cursor-grab active:cursor-grabbing ${
+      className={`card w-full text-left transition-all relative ${
         isOverlay ? 'shadow-2xl rotate-2 scale-105' : ''
+      } ${
+        isLockedByRemote 
+          ? 'cursor-not-allowed opacity-60' 
+          : 'hover:border-[var(--color-primary)] cursor-grab active:cursor-grabbing'
       }`}
     >
+      {/* Remote drag indicator overlay */}
+      {isLockedByRemote && lockedByUserName && lockedByUserColor && (
+        <RemoteDragIndicator userName={lockedByUserName} userColor={lockedByUserColor} />
+      )}
+      
       <h4 className="font-medium mb-2">{task.title}</h4>
       {task.description && (
         <p className="text-sm text-[var(--color-text-muted)] line-clamp-2 mb-3">
