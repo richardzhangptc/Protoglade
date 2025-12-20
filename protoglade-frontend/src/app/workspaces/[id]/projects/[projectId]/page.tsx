@@ -115,6 +115,9 @@ export default function ProjectPage() {
 
   // Ref for the kanban board container (for cursor tracking)
   const boardRef = useRef<HTMLElement | null>(null);
+  
+  // Track last cursor position for drag end events
+  const lastCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -233,6 +236,15 @@ export default function ProjectPage() {
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
       setActiveTask(task);
+      
+      // Immediately emit that we started dragging
+      emitCursorMove({
+        x: lastCursorPosRef.current.x,
+        y: lastCursorPosRef.current.y,
+        isDragging: true,
+        dragTaskId: task.id,
+        dragTaskTitle: task.title,
+      });
     }
   };
 
@@ -248,6 +260,9 @@ export default function ProjectPage() {
       // Calculate position relative to the board container (including scroll)
       const x = e.clientX - rect.left + scrollLeft;
       const y = e.clientY - rect.top + scrollTop;
+
+      // Save last position for drag end events
+      lastCursorPosRef.current = { x, y };
 
       emitCursorMove({
         x,
@@ -272,6 +287,15 @@ export default function ProjectPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
+    
+    // Immediately emit that we stopped dragging (use last known position)
+    emitCursorMove({
+      x: lastCursorPosRef.current.x,
+      y: lastCursorPosRef.current.y,
+      isDragging: false,
+      dragTaskId: null,
+      dragTaskTitle: null,
+    });
 
     if (!over) return;
 
