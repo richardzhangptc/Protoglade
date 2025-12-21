@@ -1,10 +1,13 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Put, Get, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-
-import { Get, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+
+class UpdateProfileDto {
+  name?: string;
+  email?: string;
+}
 
 @Controller('auth')
 export class AuthController {
@@ -25,5 +28,10 @@ export class AuthController {
   me(@Req() req) {
     return req.user;
   }
-  
+
+  @Put('profile')
+  @UseGuards(AuthGuard('jwt'))
+  async updateProfile(@Req() req, @Body() dto: UpdateProfileDto) {
+    return this.auth.updateProfile(req.user.id, dto);
+  }
 }

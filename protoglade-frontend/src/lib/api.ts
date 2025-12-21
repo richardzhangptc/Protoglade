@@ -69,6 +69,13 @@ class ApiClient {
     return this.request<{ id: string; email: string; name: string | null }>('/auth/me');
   }
 
+  async updateProfile(data: { name?: string; email?: string }) {
+    return this.request<{ id: string; email: string; name: string | null }>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   logout() {
     this.setToken(null);
   }
@@ -87,6 +94,13 @@ class ApiClient {
 
   async getWorkspace(id: string) {
     return this.request<import('@/types').Workspace>(`/workspaces/${id}`);
+  }
+
+  async updateWorkspace(id: string, data: { name?: string }) {
+    return this.request<import('@/types').Workspace>(`/workspaces/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   }
 
   async deleteWorkspace(id: string) {

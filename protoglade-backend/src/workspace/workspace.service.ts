@@ -81,6 +81,33 @@ export class WorkspaceService {
     return { ...workspace, myRole: membership.role };
   }
 
+  // Update a workspace (only owners/admins can do this)
+  async update(
+    workspaceId: string,
+    userId: string,
+    data: { name?: string },
+  ) {
+    // Check requester has permission
+    const membership = await this.checkPermission(workspaceId, userId, [
+      'owner',
+      'admin',
+    ]);
+
+    const workspace = await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data,
+      include: {
+        members: {
+          include: {
+            user: { select: { id: true, email: true, name: true } },
+          },
+        },
+      },
+    });
+
+    return { ...workspace, myRole: membership.role };
+  }
+
   // Add a member to a workspace (only owners/admins can do this)
   async addMember(
     workspaceId: string,

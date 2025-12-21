@@ -10,6 +10,7 @@ import { usePresence, TaskSyncEvent, TaskDeleteEvent } from '@/hooks/usePresence
 import { OnlineUsers } from '@/components/OnlineUsers';
 import { RemoteCursors, RemoteDragIndicator } from '@/components/RemoteCursors';
 import { RemoteCursor } from '@/hooks/usePresence';
+import { UserPopup } from '@/components/UserPopup';
 import {
   DndContext,
   DragOverlay,
@@ -47,7 +48,7 @@ const COLUMNS: { id: TaskStatus; title: string; color: string }[] = [
 ];
 
 export default function WorkspacePage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, logout } = useAuth();
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -60,6 +61,7 @@ export default function WorkspacePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarView, setSidebarView] = useState<SidebarView>('projects');
   const [showWorkspaceSwitcher, setShowWorkspaceSwitcher] = useState(false);
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
@@ -583,41 +585,69 @@ export default function WorkspacePage() {
 
   return (
     <div className="min-h-screen flex bg-[var(--color-bg)]">
-      {/* Sidebar */}
-      <aside className="w-64 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col h-screen sticky top-0">
-        {/* Workspace Switcher */}
-        <div className="p-3 border-b border-[var(--color-border)] relative" ref={workspaceSwitcherRef}>
+      {/* Collapsed Sidebar Toggle - Only show when no project is selected */}
+      {sidebarCollapsed && !selectedProjectId && (
+        <div className="fixed top-0 left-0 z-40 p-3">
           <button
-            onClick={() => setShowWorkspaceSwitcher(!showWorkspaceSwitcher)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors group"
+            onClick={() => setSidebarCollapsed(false)}
+            className="w-10 h-10 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors shadow-sm"
+            title="Expand sidebar"
           >
-            <div className="w-8 h-8 rounded-md bg-[var(--color-primary)] flex items-center justify-center text-sm font-semibold text-[#2B2B2B]">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Sidebar */}
+      <aside className={`${sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-64'} border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col h-screen sticky top-0 transition-all duration-200`}>
+        {/* Workspace Switcher Header */}
+        <div className="p-3 border-b border-[var(--color-border)] relative" ref={workspaceSwitcherRef}>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowWorkspaceSwitcher(!showWorkspaceSwitcher)}
+              className="flex-1 flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors group"
+            >
+              <div className="w-8 h-8 rounded-md bg-[var(--color-primary)] flex items-center justify-center text-sm font-semibold text-[#2B2B2B] flex-shrink-0">
                 {workspace?.name.charAt(0).toUpperCase()}
               </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-sm font-medium text-[var(--color-text)] truncate">
-                {workspace?.name}
-              </p>
-              <p className="text-xs text-[var(--color-text-muted)]">
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-[var(--color-text)] truncate">
+                  {workspace?.name}
+                </p>
+                <p className="text-xs text-[var(--color-text-muted)]">
                   {workspace?.members.length} member{workspace?.members.length !== 1 ? 's' : ''}
                 </p>
               </div>
-            <svg 
-              className={`w-4 h-4 text-[var(--color-text-muted)] transition-transform ${showWorkspaceSwitcher ? 'rotate-180' : ''}`} 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
+              <svg 
+                className={`w-4 h-4 text-[var(--color-text-muted)] transition-transform ${showWorkspaceSwitcher ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Collapse Button */}
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
+              title="Collapse sidebar"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
 
           {/* Floating Workspace Switcher Dropdown */}
           {showWorkspaceSwitcher && (
             <div className="absolute left-3 right-3 top-full mt-1 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg z-50">
               <div className="max-h-64 overflow-y-auto">
                 {allWorkspaces.map((ws) => (
-            <button
+                  <button
                     key={ws.id}
                     onClick={() => {
                       setShowWorkspaceSwitcher(false);
@@ -633,29 +663,29 @@ export default function WorkspacePage() {
                   >
                     <div className="w-6 h-6 rounded-md bg-[var(--color-surface-hover)] border border-[var(--color-border)] flex items-center justify-center text-xs font-medium">
                       {ws.name.charAt(0).toUpperCase()}
-              </div>
+                    </div>
                     <span className="text-sm truncate flex-1">{ws.name}</span>
                     {ws.id === workspaceId && (
                       <svg className="w-4 h-4 text-[var(--color-primary)]" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
-            </button>
+                  </button>
                 ))}
               </div>
               <div className="border-t border-[var(--color-border)] mt-1 pt-1">
-            <button
+                <button
                   onClick={() => {
                     setShowWorkspaceSwitcher(false);
                     setShowCreateWorkspaceModal(true);
                   }}
                   className="flex items-center gap-3 px-3 py-2 w-full text-left hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] text-sm"
                 >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+                  </svg>
                   New Workspace
-            </button>
+                </button>
                 <Link
                   href="/dashboard"
                   onClick={() => setShowWorkspaceSwitcher(false)}
@@ -666,10 +696,21 @@ export default function WorkspacePage() {
                   </svg>
                   All Workspaces
                 </Link>
-          </div>
-        </div>
-          )}
+                <Link
+                  href={`/workspaces/${workspaceId}/settings`}
+                  onClick={() => setShowWorkspaceSwitcher(false)}
+                  className="flex items-center gap-3 px-3 py-2 hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Workspace Settings
+                </Link>
               </div>
+            </div>
+          )}
+        </div>
 
         {/* Navigation */}
         <nav className="flex-1 p-3 overflow-y-auto">
@@ -690,7 +731,7 @@ export default function WorkspacePage() {
               </button>
             </div>
             <div className="space-y-1">
-            {projects.length === 0 ? (
+              {projects.length === 0 ? (
                 <p className="text-xs text-[var(--color-text-muted)] px-2 py-1">No projects yet</p>
               ) : (
                 projects.map((project) => (
@@ -705,18 +746,18 @@ export default function WorkspacePage() {
                   >
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
+                    </svg>
                     <span className="truncate">{project.name}</span>
                     {project._count && project._count.tasks > 0 && (
                       <span className="ml-auto text-xs text-[var(--color-text-muted)]">
                         {project._count.tasks}
-                        </span>
-                      )}
+                      </span>
+                    )}
                   </button>
                 ))
               )}
-              </div>
             </div>
+          </div>
 
           {/* Members Section */}
           <div>
@@ -747,48 +788,42 @@ export default function WorkspacePage() {
                     >
                       <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-[10px] text-white font-medium flex-shrink-0">
                         {(member.user.name || member.user.email).charAt(0).toUpperCase()}
-                        </div>
+                      </div>
                       <span className="truncate text-[var(--color-text-muted)]">
                         {member.user.name || member.user.email.split('@')[0]}
                       </span>
-                            {member.user.id === user?.id && (
+                      {member.user.id === user?.id && (
                         <span className="text-[10px] text-[var(--color-text-muted)]">(you)</span>
-                            )}
-                          </div>
+                      )}
+                    </div>
                   ))}
                 
                 {(workspace?.myRole === 'owner' || workspace?.myRole === 'admin') && (
-                          <button
+                  <button
                     onClick={() => setShowInviteModal(true)}
                     className="flex items-center gap-2 py-1 text-sm text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] transition-colors mt-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
+                    </svg>
                     Invite members
-                          </button>
-                        )}
-                      </div>
+                  </button>
+                )}
+              </div>
             )}
-                    </div>
+          </div>
         </nav>
 
         {/* User Section */}
         <div className="p-3 border-t border-[var(--color-border)]">
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
-              {(user?.name || user?.email || 'U').charAt(0).toUpperCase()}
-                  </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--color-text)] truncate">
-                {user?.name || user?.email?.split('@')[0]}
-              </p>
-              <p className="text-xs text-[var(--color-text-muted)] truncate">
-                {user?.email}
-              </p>
-                </div>
-                  </div>
-                </div>
+          <UserPopup 
+            user={user} 
+            onLogout={() => {
+              logout();
+              router.push('/auth/login');
+            }} 
+          />
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -798,14 +833,28 @@ export default function WorkspacePage() {
             {/* Project Header */}
             <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-xl font-semibold text-[var(--color-text)]">{selectedProject.name}</h1>
-                  {selectedProject.description && (
-                    <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-                      {selectedProject.description}
-                    </p>
+                <div className="flex items-center gap-3">
+                  {/* Expand Sidebar Button - shown when sidebar is collapsed */}
+                  {sidebarCollapsed && (
+                    <button
+                      onClick={() => setSidebarCollapsed(false)}
+                      className="p-2 -ml-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                      title="Expand sidebar"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
+                    </button>
                   )}
+                  <div>
+                    <h1 className="text-xl font-semibold text-[var(--color-text)]">{selectedProject.name}</h1>
+                    {selectedProject.description && (
+                      <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+                        {selectedProject.description}
+                      </p>
+                    )}
                   </div>
+                </div>
                 <div className="flex items-center gap-4">
                   <OnlineUsers users={onlineUsers} currentUserId={user?.id} />
                   <button

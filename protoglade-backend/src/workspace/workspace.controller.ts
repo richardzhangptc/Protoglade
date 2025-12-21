@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -11,6 +12,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { WorkspaceService } from './workspace.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { AddMemberDto } from './dto/add-member.dto';
 
 @Controller('workspaces')
@@ -34,6 +36,16 @@ export class WorkspaceController {
   @Get(':id')
   async findOne(@Req() req, @Param('id') id: string) {
     return this.workspaceService.findOne(id, req.user.id);
+  }
+
+  // PATCH /workspaces/:id - Update a workspace (owner/admin only)
+  @Patch(':id')
+  async update(
+    @Req() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkspaceDto,
+  ) {
+    return this.workspaceService.update(id, req.user.id, dto);
   }
 
   // DELETE /workspaces/:id - Delete a workspace (owner only)

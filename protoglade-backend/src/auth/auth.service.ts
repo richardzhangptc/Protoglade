@@ -37,5 +37,27 @@ export class AuthService {
     return { accessToken };
     }
 
+    async updateProfile(userId: string, data: { name?: string; email?: string }) {
+    // If email is being changed, check it's not already in use
+    if (data.email) {
+        const existing = await this.prisma.user.findFirst({
+        where: { 
+            email: data.email,
+            NOT: { id: userId }
+        }
+        });
+        if (existing) throw new ConflictException('Email already in use');
+    }
 
+    const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.email !== undefined && { email: data.email }),
+        },
+    });
+
+    const { password: _, ...safeUser } = user;
+    return safeUser;
+    }
 }
