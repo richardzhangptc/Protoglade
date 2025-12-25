@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import throttle from 'lodash.throttle';
 import { api } from '@/lib/api';
-import { Task } from '@/types';
+import { Task, KanbanColumn } from '@/types';
 
 export interface OnlineUser {
   id: string;
@@ -24,6 +24,25 @@ export interface TaskDeleteEvent {
   projectId: string;
   taskId: string;
   deletedBy?: OnlineUser;
+}
+
+export interface ColumnSyncEvent {
+  projectId: string;
+  column: KanbanColumn;
+  createdBy?: OnlineUser;
+  updatedBy?: OnlineUser;
+}
+
+export interface ColumnDeleteEvent {
+  projectId: string;
+  columnId: string;
+  deletedBy?: OnlineUser;
+}
+
+export interface ColumnsReorderedEvent {
+  projectId: string;
+  columns: KanbanColumn[];
+  reorderedBy?: OnlineUser;
 }
 
 export interface RemoteCursor {
@@ -59,6 +78,10 @@ interface UsePresenceOptions {
   onTaskCreated?: (event: TaskSyncEvent) => void;
   onTaskUpdated?: (event: TaskSyncEvent) => void;
   onTaskDeleted?: (event: TaskDeleteEvent) => void;
+  onColumnCreated?: (event: ColumnSyncEvent) => void;
+  onColumnUpdated?: (event: ColumnSyncEvent) => void;
+  onColumnDeleted?: (event: ColumnDeleteEvent) => void;
+  onColumnsReordered?: (event: ColumnsReorderedEvent) => void;
 }
 
 export function usePresence(projectId: string | null, options?: UsePresenceOptions) {
@@ -136,6 +159,35 @@ export function usePresence(projectId: string | null, options?: UsePresenceOptio
       if (event.projectId === currentProjectIdRef.current) {
         console.log('Received task:deleted event', event);
         optionsRef.current?.onTaskDeleted?.(event);
+      }
+    });
+
+    // Column sync events
+    socket.on('column:created', (event: ColumnSyncEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        console.log('Received column:created event', event);
+        optionsRef.current?.onColumnCreated?.(event);
+      }
+    });
+
+    socket.on('column:updated', (event: ColumnSyncEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        console.log('Received column:updated event', event);
+        optionsRef.current?.onColumnUpdated?.(event);
+      }
+    });
+
+    socket.on('column:deleted', (event: ColumnDeleteEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        console.log('Received column:deleted event', event);
+        optionsRef.current?.onColumnDeleted?.(event);
+      }
+    });
+
+    socket.on('column:reordered', (event: ColumnsReorderedEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        console.log('Received column:reordered event', event);
+        optionsRef.current?.onColumnsReordered?.(event);
       }
     });
 
@@ -270,6 +322,43 @@ export function usePresence(projectId: string | null, options?: UsePresenceOptio
     }
   }, []);
 
+  // Methods to emit column sync events
+  const emitColumnCreated = useCallback((column: KanbanColumn) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('column:created', {
+        projectId: currentProjectIdRef.current,
+        column,
+      });
+    }
+  }, []);
+
+  const emitColumnUpdated = useCallback((column: KanbanColumn) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('column:updated', {
+        projectId: currentProjectIdRef.current,
+        column,
+      });
+    }
+  }, []);
+
+  const emitColumnDeleted = useCallback((columnId: string) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('column:deleted', {
+        projectId: currentProjectIdRef.current,
+        columnId,
+      });
+    }
+  }, []);
+
+  const emitColumnsReordered = useCallback((columns: KanbanColumn[]) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('column:reordered', {
+        projectId: currentProjectIdRef.current,
+        columns,
+      });
+    }
+  }, []);
+
   // Throttled cursor move emitter
   const emitCursorMoveThrottled = useMemo(
     () =>
@@ -328,6 +417,10 @@ export function usePresence(projectId: string | null, options?: UsePresenceOptio
     emitTaskCreated,
     emitTaskUpdated,
     emitTaskDeleted,
+    emitColumnCreated,
+    emitColumnUpdated,
+    emitColumnDeleted,
+    emitColumnsReordered,
     emitCursorMove,
     emitCursorLeave,
   };

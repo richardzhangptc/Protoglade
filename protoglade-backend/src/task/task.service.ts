@@ -24,9 +24,12 @@ export class TaskService {
 
     await this.checkWorkspaceMembership(project.workspaceId, userId);
 
-    // Get the highest position in this project to add new task at the end
+    // Get the highest position in this column/project to add new task at the end
     const lastTask = await this.prisma.task.findFirst({
-      where: { projectId: dto.projectId },
+      where: { 
+        projectId: dto.projectId,
+        ...(dto.columnId ? { columnId: dto.columnId } : {}),
+      },
       orderBy: { position: 'desc' },
     });
 
@@ -39,11 +42,13 @@ export class TaskService {
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         assigneeId: dto.assigneeId,
         projectId: dto.projectId,
-        position: (lastTask?.position ?? 0) + 1,
+        columnId: dto.columnId,
+        position: (lastTask?.position ?? 0) + 1000,
       },
       include: {
         assignee: { select: { id: true, email: true, name: true } },
         project: { select: { id: true, name: true } },
+        column: { select: { id: true, name: true, color: true } },
       },
     });
 
@@ -66,9 +71,10 @@ export class TaskService {
       where: { projectId },
       include: {
         assignee: { select: { id: true, email: true, name: true } },
+        column: { select: { id: true, name: true, color: true } },
         _count: { select: { comments: true } },
       },
-      orderBy: [{ status: 'asc' }, { position: 'asc' }],
+      orderBy: [{ position: 'asc' }],
     });
   }
 
@@ -124,10 +130,12 @@ export class TaskService {
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
         assigneeId: dto.assigneeId,
         position: dto.position,
+        columnId: dto.columnId,
       },
       include: {
         assignee: { select: { id: true, email: true, name: true } },
         project: { select: { id: true, name: true } },
+        column: { select: { id: true, name: true, color: true } },
       },
     });
   }

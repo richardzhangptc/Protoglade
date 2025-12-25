@@ -10,6 +10,7 @@ import { CommentModule } from './comment/comment.module';
 import { InvitationModule } from './invitation/invitation.module';
 import { UnsubscribeModule } from './unsubscribe/unsubscribe.module';
 import { PresenceModule } from './presence/presence.module';
+import { ColumnModule } from './column/column.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { PresenceModule } from './presence/presence.module';
     InvitationModule,
     UnsubscribeModule,
     PresenceModule,
+    ColumnModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

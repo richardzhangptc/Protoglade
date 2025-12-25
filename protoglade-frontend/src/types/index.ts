@@ -46,9 +46,23 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   projectId: string;
+  columnId: string | null;
+  column?: KanbanColumn | null;
   assignee: User | null;
   _count?: { comments: number };
   comments?: Comment[];
+}
+
+// Kanban Column types
+export interface KanbanColumn {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+  projectId: string;
+  _count?: { tasks: number };
 }
 
 // Comment types

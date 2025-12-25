@@ -150,6 +150,7 @@ class ApiClient {
     priority?: string;
     dueDate?: string;
     assigneeId?: string;
+    columnId?: string;
   }) {
     return this.request<import('@/types').Task>('/tasks', {
       method: 'POST',
@@ -176,6 +177,38 @@ class ApiClient {
 
   async getMyTasks() {
     return this.request<Array<import('@/types').Task>>('/tasks/my');
+  }
+
+  // Columns
+  async getColumns(projectId: string) {
+    return this.request<Array<import('@/types').KanbanColumn>>(`/columns?projectId=${projectId}`);
+  }
+
+  async createColumn(data: { name: string; projectId: string; color?: string; position?: number }) {
+    return this.request<import('@/types').KanbanColumn>('/columns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateColumn(id: string, data: { name?: string; color?: string; position?: number }) {
+    return this.request<import('@/types').KanbanColumn>(`/columns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async reorderColumns(projectId: string, columnIds: string[]) {
+    return this.request<Array<import('@/types').KanbanColumn>>(`/columns/project/${projectId}/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ columnIds }),
+    });
+  }
+
+  async deleteColumn(id: string) {
+    return this.request<{ message: string }>(`/columns/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   // Comments

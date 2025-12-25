@@ -292,6 +292,145 @@ export class PresenceGateway
     });
   }
 
+  // ===== Column Sync Events =====
+
+  @SubscribeMessage('column:created')
+  handleColumnCreated(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      column: {
+        id: string;
+        name: string;
+        color: string;
+        position: number;
+        projectId: string;
+        _count?: { tasks: number };
+      };
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, column } = data;
+
+    console.log(
+      `Column created by ${client.user.email} in project ${projectId}: ${column.name}`,
+    );
+
+    // Broadcast to all OTHER users in the project (exclude sender)
+    client.to(`project:${projectId}`).emit('column:created', {
+      projectId,
+      column,
+      createdBy: {
+        id: client.user.id,
+        email: client.user.email,
+        name: client.user.name,
+      },
+    });
+  }
+
+  @SubscribeMessage('column:updated')
+  handleColumnUpdated(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      column: {
+        id: string;
+        name: string;
+        color: string;
+        position: number;
+        projectId: string;
+        _count?: { tasks: number };
+      };
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, column } = data;
+
+    console.log(
+      `Column updated by ${client.user.email} in project ${projectId}: ${column.id}`,
+    );
+
+    // Broadcast to all OTHER users in the project (exclude sender)
+    client.to(`project:${projectId}`).emit('column:updated', {
+      projectId,
+      column,
+      updatedBy: {
+        id: client.user.id,
+        email: client.user.email,
+        name: client.user.name,
+      },
+    });
+  }
+
+  @SubscribeMessage('column:deleted')
+  handleColumnDeleted(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      columnId: string;
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, columnId } = data;
+
+    console.log(
+      `Column deleted by ${client.user.email} in project ${projectId}: ${columnId}`,
+    );
+
+    // Broadcast to all OTHER users in the project (exclude sender)
+    client.to(`project:${projectId}`).emit('column:deleted', {
+      projectId,
+      columnId,
+      deletedBy: {
+        id: client.user.id,
+        email: client.user.email,
+        name: client.user.name,
+      },
+    });
+  }
+
+  @SubscribeMessage('column:reordered')
+  handleColumnReordered(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      columns: Array<{
+        id: string;
+        name: string;
+        color: string;
+        position: number;
+        projectId: string;
+        _count?: { tasks: number };
+      }>;
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, columns } = data;
+
+    console.log(
+      `Columns reordered by ${client.user.email} in project ${projectId}`,
+    );
+
+    // Broadcast to all OTHER users in the project (exclude sender)
+    client.to(`project:${projectId}`).emit('column:reordered', {
+      projectId,
+      columns,
+      reorderedBy: {
+        id: client.user.id,
+        email: client.user.email,
+        name: client.user.name,
+      },
+    });
+  }
+
   // ===== Cursor Events =====
 
   @SubscribeMessage('cursor:move')

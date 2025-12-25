@@ -5,8 +5,15 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
-import { Workspace, Project, Invitation, Task } from '@/types';
-import { usePresence, TaskSyncEvent, TaskDeleteEvent } from '@/hooks/usePresence';
+import { Workspace, Project, Invitation, Task, KanbanColumn } from '@/types';
+import { 
+  usePresence, 
+  TaskSyncEvent, 
+  TaskDeleteEvent, 
+  ColumnSyncEvent, 
+  ColumnDeleteEvent, 
+  ColumnsReorderedEvent 
+} from '@/hooks/usePresence';
 import { OnlineUsers } from '@/components/OnlineUsers';
 import { RemoteCursors, RemoteDragIndicator } from '@/components/RemoteCursors';
 import { RemoteCursor } from '@/hooks/usePresence';
@@ -21,18 +28,23 @@ import {
   DragStartEvent,
   DragEndEvent,
   useDroppable,
+  closestCenter,
+  pointerWithin,
+  CollisionDetection,
   rectIntersection,
+  getFirstCollision,
 } from '@dnd-kit/core';
 import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   useSortable,
+  arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 type SidebarView = 'projects' | 'members';
-type TaskStatus = 'todo' | 'in_progress' | 'done';
 
 const priorityColors: Record<string, string> = {
   low: 'badge-low',
@@ -41,10 +53,17 @@ const priorityColors: Record<string, string> = {
   urgent: 'badge-urgent',
 };
 
-const COLUMNS: { id: TaskStatus; title: string; color: string }[] = [
-  { id: 'todo', title: 'To Do', color: 'bg-zinc-500' },
-  { id: 'in_progress', title: 'In Progress', color: 'bg-indigo-500' },
-  { id: 'done', title: 'Done', color: 'bg-green-500' },
+const COLUMN_COLORS = [
+  '#71717a', // Zinc
+  '#6366f1', // Indigo
+  '#22c55e', // Green
+  '#f59e0b', // Amber
+  '#ef4444', // Red
+  '#8b5cf6', // Purple
+  '#ec4899', // Pink
+  '#14b8a6', // Teal
+  '#3b82f6', // Blue
+  '#f97316', // Orange
 ];
 
 export default function WorkspacePage() {
@@ -84,12 +103,21 @@ export default function WorkspacePage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [createTaskColumnId, setCreateTaskColumnId] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({ title: '', description: '', priority: 'medium' });
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [activeColumn, setActiveColumn] = useState<KanbanColumn | null>(null);
+  const [showCreateColumnModal, setShowCreateColumnModal] = useState(false);
+  const [newColumnName, setNewColumnName] = useState('');
+  const [newColumnColor, setNewColumnColor] = useState(COLUMN_COLORS[0]);
+  const [isCreatingColumn, setIsCreatingColumn] = useState(false);
+  const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
+  const [editingColumnName, setEditingColumnName] = useState('');
 
   // Real-time task sync handlers
   const handleRemoteTaskCreated = useCallback((event: TaskSyncEvent) => {
@@ -115,6 +143,30 @@ export default function WorkspacePage() {
     setSelectedTask((prev) => (prev?.id === event.taskId ? null : prev));
   }, []);
 
+  // Column sync handlers
+  const handleRemoteColumnCreated = useCallback((event: ColumnSyncEvent) => {
+    setColumns((prev) => {
+      if (prev.some((c) => c.id === event.column.id)) {
+        return prev;
+      }
+      return [...prev, event.column].sort((a, b) => a.position - b.position);
+    });
+  }, []);
+
+  const handleRemoteColumnUpdated = useCallback((event: ColumnSyncEvent) => {
+    setColumns((prev) =>
+      prev.map((c) => (c.id === event.column.id ? event.column : c))
+    );
+  }, []);
+
+  const handleRemoteColumnDeleted = useCallback((event: ColumnDeleteEvent) => {
+    setColumns((prev) => prev.filter((c) => c.id !== event.columnId));
+  }, []);
+
+  const handleRemoteColumnsReordered = useCallback((event: ColumnsReorderedEvent) => {
+    setColumns(event.columns.sort((a, b) => a.position - b.position));
+  }, []);
+
   // Real-time presence and task sync
   const {
     onlineUsers,
@@ -122,12 +174,20 @@ export default function WorkspacePage() {
     emitTaskCreated,
     emitTaskUpdated,
     emitTaskDeleted,
+    emitColumnCreated,
+    emitColumnUpdated,
+    emitColumnDeleted,
+    emitColumnsReordered,
     emitCursorMove,
     emitCursorLeave,
   } = usePresence(selectedProjectId, {
     onTaskCreated: handleRemoteTaskCreated,
     onTaskUpdated: handleRemoteTaskUpdated,
     onTaskDeleted: handleRemoteTaskDeleted,
+    onColumnCreated: handleRemoteColumnCreated,
+    onColumnUpdated: handleRemoteColumnUpdated,
+    onColumnDeleted: handleRemoteColumnDeleted,
+    onColumnsReordered: handleRemoteColumnsReordered,
   });
 
   // Refs
@@ -138,12 +198,36 @@ export default function WorkspacePage() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 5, // Lower distance for more responsive drag
       },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
+  );
+
+  // Custom collision detection that prioritizes columns when dragging columns,
+  // and tasks when dragging tasks
+  const collisionDetectionStrategy: CollisionDetection = useCallback(
+    (args) => {
+      // If dragging a column, only consider other columns
+      if (activeColumn) {
+        return closestCenter({
+          ...args,
+          droppableContainers: args.droppableContainers.filter(
+            (container) => columns.some((c) => c.id === container.id)
+          ),
+        });
+      }
+
+      // For tasks, use pointer within first, then fall back to closest center
+      const pointerCollisions = pointerWithin(args);
+      if (pointerCollisions.length > 0) {
+        return pointerCollisions;
+      }
+      return closestCenter(args);
+    },
+    [activeColumn, columns]
   );
 
   // Close workspace switcher when clicking outside
@@ -189,6 +273,7 @@ export default function WorkspacePage() {
     } else {
       setSelectedProject(null);
       setTasks([]);
+      setColumns([]);
     }
   }, [selectedProjectId]);
 
@@ -215,12 +300,14 @@ export default function WorkspacePage() {
   const loadProjectData = async (projectId: string) => {
     setIsLoadingProject(true);
     try {
-      const [projectData, tasksData] = await Promise.all([
+      const [projectData, tasksData, columnsData] = await Promise.all([
         api.getProject(projectId),
         api.getTasks(projectId),
+        api.getColumns(projectId),
       ]);
       setSelectedProject(projectData);
       setTasks(tasksData);
+      setColumns(columnsData.sort((a, b) => a.position - b.position));
     } catch (error) {
       console.error('Failed to load project:', error);
       setSelectedProjectId(null);
@@ -349,10 +436,12 @@ export default function WorkspacePage() {
       const task = await api.createTask({
         ...newTask,
         projectId: selectedProjectId,
+        columnId: createTaskColumnId || columns[0]?.id,
       });
       setTasks([...tasks, task]);
       setNewTask({ title: '', description: '', priority: 'medium' });
       setShowCreateTaskModal(false);
+      setCreateTaskColumnId(null);
       emitTaskCreated(task);
     } catch (error) {
       console.error('Failed to create task:', error);
@@ -361,9 +450,73 @@ export default function WorkspacePage() {
     }
   };
 
-  const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
+  // Column handlers
+  const handleCreateColumn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newColumnName.trim() || !selectedProjectId) return;
+
+    setIsCreatingColumn(true);
     try {
-      const updated = await api.updateTask(taskId, { status });
+      const column = await api.createColumn({
+        name: newColumnName,
+        projectId: selectedProjectId,
+        color: newColumnColor,
+      });
+      setColumns([...columns, column]);
+      setNewColumnName('');
+      setNewColumnColor(COLUMN_COLORS[0]);
+      setShowCreateColumnModal(false);
+      emitColumnCreated(column);
+    } catch (error) {
+      console.error('Failed to create column:', error);
+    } finally {
+      setIsCreatingColumn(false);
+    }
+  };
+
+  const handleUpdateColumnName = async (columnId: string) => {
+    if (!editingColumnName.trim()) {
+      setEditingColumnId(null);
+      return;
+    }
+
+    try {
+      const updated = await api.updateColumn(columnId, { name: editingColumnName });
+      setColumns(columns.map((c) => (c.id === columnId ? updated : c)));
+      emitColumnUpdated(updated);
+    } catch (error) {
+      console.error('Failed to update column:', error);
+    } finally {
+      setEditingColumnId(null);
+      setEditingColumnName('');
+    }
+  };
+
+  const handleDeleteColumn = async (columnId: string) => {
+    if (columns.length <= 1) {
+      alert('You must have at least one column');
+      return;
+    }
+
+    try {
+      await api.deleteColumn(columnId);
+      setColumns(columns.filter((c) => c.id !== columnId));
+      // Move tasks from this column to the first remaining column
+      const firstRemainingColumn = columns.find((c) => c.id !== columnId);
+      if (firstRemainingColumn) {
+        setTasks(tasks.map((t) => 
+          t.columnId === columnId ? { ...t, columnId: firstRemainingColumn.id } : t
+        ));
+      }
+      emitColumnDeleted(columnId);
+    } catch (error) {
+      console.error('Failed to delete column:', error);
+    }
+  };
+
+  const handleUpdateTaskColumn = async (taskId: string, columnId: string) => {
+    try {
+      const updated = await api.updateTask(taskId, { columnId });
       setTasks(tasks.map((t) => (t.id === taskId ? updated : t)));
       if (selectedTask?.id === taskId) {
         setSelectedTask(updated);
@@ -385,36 +538,48 @@ export default function WorkspacePage() {
     }
   };
 
-  // Group tasks by status
-  const tasksByStatus = useMemo(() => {
-    const grouped: Record<TaskStatus, Task[]> = {
-      todo: [],
-      in_progress: [],
-      done: [],
-    };
+  // Group tasks by column
+  const tasksByColumn = useMemo(() => {
+    const grouped: Record<string, Task[]> = {};
+    columns.forEach((col) => {
+      grouped[col.id] = [];
+    });
     tasks.forEach((task) => {
-      if (grouped[task.status]) {
-        grouped[task.status].push(task);
+      if (task.columnId && grouped[task.columnId]) {
+        grouped[task.columnId].push(task);
+      } else if (columns.length > 0) {
+        // Put orphan tasks in the first column
+        grouped[columns[0].id]?.push(task);
       }
     });
-    Object.keys(grouped).forEach((status) => {
-      grouped[status as TaskStatus].sort((a, b) => a.position - b.position);
+    // Sort tasks by position within each column
+    Object.keys(grouped).forEach((columnId) => {
+      grouped[columnId].sort((a, b) => a.position - b.position);
     });
     return grouped;
-  }, [tasks]);
+  }, [tasks, columns]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
-    const task = tasks.find((t) => t.id === active.id);
-    if (task) {
-      setActiveTask(task);
-      emitCursorMove({
-        x: lastCursorPosRef.current.x,
-        y: lastCursorPosRef.current.y,
-        isDragging: true,
-        dragTaskId: task.id,
-        dragTaskTitle: task.title,
-      });
+    const activeData = active.data.current;
+    
+    if (activeData?.type === 'column') {
+      const column = columns.find((c) => c.id === active.id);
+      if (column) {
+        setActiveColumn(column);
+      }
+    } else {
+      const task = tasks.find((t) => t.id === active.id);
+      if (task) {
+        setActiveTask(task);
+        emitCursorMove({
+          x: lastCursorPosRef.current.x,
+          y: lastCursorPosRef.current.y,
+          isDragging: true,
+          dragTaskId: task.id,
+          dragTaskTitle: task.title,
+        });
+      }
     }
   };
 
@@ -448,7 +613,11 @@ export default function WorkspacePage() {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const activeData = active.data.current;
+    
+    // Reset active items
     setActiveTask(null);
+    setActiveColumn(null);
 
     emitCursorMove({
       x: lastCursorPosRef.current.x,
@@ -463,30 +632,62 @@ export default function WorkspacePage() {
     const activeId = active.id as string;
     const overId = over.id as string;
 
+    // Handle column reordering
+    if (activeData?.type === 'column') {
+      if (activeId !== overId) {
+        const oldIndex = columns.findIndex((c) => c.id === activeId);
+        const newIndex = columns.findIndex((c) => c.id === overId);
+        
+        if (oldIndex !== -1 && newIndex !== -1) {
+          const newColumns = arrayMove(columns, oldIndex, newIndex);
+          setColumns(newColumns);
+          
+          // Update positions on server
+          try {
+            const reorderedColumns = await api.reorderColumns(
+              selectedProjectId!,
+              newColumns.map((c) => c.id)
+            );
+            setColumns(reorderedColumns);
+            emitColumnsReordered(reorderedColumns);
+          } catch (error) {
+            console.error('Failed to reorder columns:', error);
+            if (selectedProjectId) {
+              loadProjectData(selectedProjectId);
+            }
+          }
+        }
+      }
+      return;
+    }
+
+    // Handle task dragging
     const draggedTask = tasks.find((t) => t.id === activeId);
     if (!draggedTask) return;
 
-    const isOverColumn = COLUMNS.some((col) => col.id === overId);
+    const overData = over.data.current;
+    const isOverColumnDropArea = overData?.type === 'column';
     const overTask = tasks.find((t) => t.id === overId);
 
-    let targetStatus: TaskStatus;
+    let targetColumnId: string;
 
-    if (isOverColumn) {
-      targetStatus = overId as TaskStatus;
+    if (isOverColumnDropArea) {
+      // Extract the actual column ID from the drop area ID (format: column-drop-{columnId})
+      targetColumnId = overData?.columnId || columns[0]?.id;
     } else if (overTask) {
-      targetStatus = overTask.status;
+      targetColumnId = overTask.columnId || columns[0]?.id;
     } else {
-      targetStatus = draggedTask.status;
+      targetColumnId = draggedTask.columnId || columns[0]?.id;
     }
 
-    const sourceStatus = draggedTask.status;
-    const isSameColumn = sourceStatus === targetStatus;
+    const sourceColumnId = draggedTask.columnId || columns[0]?.id;
+    const isSameColumn = sourceColumnId === targetColumnId;
 
-    const targetColumnTasks = tasksByStatus[targetStatus];
+    const targetColumnTasks = tasksByColumn[targetColumnId] || [];
 
     let newPosition: number;
 
-    if (isOverColumn) {
+    if (isOverColumnDropArea) {
       const lastTask = targetColumnTasks[targetColumnTasks.length - 1];
       newPosition = lastTask ? lastTask.position + 1000 : 1000;
     } else if (overTask) {
@@ -543,14 +744,14 @@ export default function WorkspacePage() {
     setTasks((prevTasks) =>
       prevTasks.map((t) =>
         t.id === activeId
-          ? { ...t, status: targetStatus, position: newPosition }
+          ? { ...t, columnId: targetColumnId, position: newPosition }
           : t
       )
     );
 
     try {
       const updated = await api.updateTask(activeId, {
-        status: targetStatus,
+        columnId: targetColumnId,
         position: newPosition,
       });
       emitTaskUpdated(updated);
@@ -584,7 +785,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[var(--color-bg)]">
+    <div className="h-screen flex bg-[var(--color-bg)] overflow-hidden">
       {/* Collapsed Sidebar Toggle - Only show when no project is selected */}
       {sidebarCollapsed && !selectedProjectId && (
         <div className="fixed top-0 left-0 z-40 p-3">
@@ -600,8 +801,8 @@ export default function WorkspacePage() {
         </div>
       )}
 
-      {/* Sidebar */}
-      <aside className={`${sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-64'} border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col h-screen sticky top-0 transition-all duration-200`}>
+      {/* Sidebar - fixed height, doesn't scroll with board */}
+      <aside className={`${sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-64'} flex-shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col h-full transition-all duration-200`}>
         {/* Workspace Switcher Header */}
         <div className="p-3 border-b border-[var(--color-border)] relative" ref={workspaceSwitcherRef}>
           <div className="flex items-center gap-2">
@@ -827,18 +1028,18 @@ export default function WorkspacePage() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {selectedProjectId && selectedProject ? (
           <>
-            {/* Project Header */}
-            <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-4">
+            {/* Project Header - fixed, doesn't scroll */}
+            <header className="flex-shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   {/* Expand Sidebar Button - shown when sidebar is collapsed */}
                   {sidebarCollapsed && (
                     <button
                       onClick={() => setSidebarCollapsed(false)}
-                      className="p-2 -ml-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                      className="p-2 -ml-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
                       title="Expand sidebar"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -846,16 +1047,16 @@ export default function WorkspacePage() {
                       </svg>
                     </button>
                   )}
-                  <div>
-                    <h1 className="text-xl font-semibold text-[var(--color-text)]">{selectedProject.name}</h1>
+                  <div className="min-w-0">
+                    <h1 className="text-xl font-semibold text-[var(--color-text)] truncate">{selectedProject.name}</h1>
                     {selectedProject.description && (
-                      <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+                      <p className="text-sm text-[var(--color-text-muted)] mt-0.5 truncate">
                         {selectedProject.description}
                       </p>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-shrink-0">
                   <OnlineUsers users={onlineUsers} currentUserId={user?.id} />
                   <button
                     onClick={() => setShowCreateTaskModal(true)}
@@ -870,7 +1071,7 @@ export default function WorkspacePage() {
               </div>
             </header>
 
-            {/* Kanban Board */}
+            {/* Kanban Board - scrollable area */}
             {isLoadingProject ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-text-muted)] border-t-transparent" />
@@ -878,7 +1079,7 @@ export default function WorkspacePage() {
             ) : (
               <main
                 ref={boardRef}
-                className="flex-1 overflow-x-auto p-6 relative"
+                className="flex-1 overflow-auto p-6 relative"
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
               >
@@ -886,21 +1087,51 @@ export default function WorkspacePage() {
 
                 <DndContext
                   sensors={sensors}
-                  collisionDetection={rectIntersection}
+                  collisionDetection={collisionDetectionStrategy}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                 >
-                  <div className="flex gap-4 min-h-full" style={{ minWidth: 'max-content' }}>
-                    {COLUMNS.map((column) => (
-                      <KanbanColumn
-                        key={column.id}
-                        column={column}
-                        tasks={tasksByStatus[column.id]}
-                        onTaskClick={setSelectedTask}
-                        remoteCursors={remoteCursors}
-                      />
-                    ))}
-                  </div>
+                  <SortableContext 
+                    items={columns.map((c) => c.id)} 
+                    strategy={horizontalListSortingStrategy}
+                  >
+                    <div className="flex gap-4 min-h-full pb-4" style={{ minWidth: 'max-content' }}>
+                      {columns.map((column) => (
+                        <SortableKanbanColumn
+                          key={column.id}
+                          column={column}
+                          tasks={tasksByColumn[column.id] || []}
+                          onTaskClick={setSelectedTask}
+                          remoteCursors={remoteCursors}
+                          onAddTask={() => {
+                            setCreateTaskColumnId(column.id);
+                            setShowCreateTaskModal(true);
+                          }}
+                          onEditColumn={(columnId, name) => {
+                            setEditingColumnId(columnId);
+                            setEditingColumnName(name);
+                          }}
+                          onDeleteColumn={handleDeleteColumn}
+                          editingColumnId={editingColumnId}
+                          editingColumnName={editingColumnName}
+                          onEditingNameChange={setEditingColumnName}
+                          onSaveColumnName={handleUpdateColumnName}
+                          onCancelEdit={() => setEditingColumnId(null)}
+                        />
+                      ))}
+                      
+                      {/* Add Column Button */}
+                      <button
+                        onClick={() => setShowCreateColumnModal(true)}
+                        className="w-80 flex-shrink-0 min-h-[200px] rounded-xl border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all flex items-center justify-center gap-2 text-[var(--color-text-muted)] hover:text-[var(--color-primary)]"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Column
+                      </button>
+                    </div>
+                  </SortableContext>
 
                   <DragOverlay dropAnimation={null}>
                     {activeTask ? (
@@ -1068,6 +1299,65 @@ export default function WorkspacePage() {
         </div>
       )}
 
+      {/* Create Column Modal */}
+      {showCreateColumnModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold mb-4 text-[var(--color-text)]">Add Column</h3>
+            <form onSubmit={handleCreateColumn} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2 text-[var(--color-text)]">Name</label>
+                <input
+                  type="text"
+                  value={newColumnName}
+                  onChange={(e) => setNewColumnName(e.target.value)}
+                  placeholder="Column name"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2 text-[var(--color-text)]">Color</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLUMN_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setNewColumnColor(color)}
+                      className={`w-8 h-8 rounded-full transition-all ${
+                        newColumnColor === color 
+                          ? 'ring-2 ring-offset-2 ring-offset-[var(--color-surface)] ring-[var(--color-primary)] scale-110' 
+                          : 'hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateColumnModal(false);
+                    setNewColumnName('');
+                    setNewColumnColor(COLUMN_COLORS[0]);
+                  }}
+                  className="px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingColumn || !newColumnName.trim()}
+                  className="px-4 py-2 text-sm bg-[var(--color-primary)] text-[#2B2B2B] rounded-lg font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isCreatingColumn ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Invite Members Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -1213,19 +1503,23 @@ export default function WorkspacePage() {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium mb-2 text-[var(--color-text)]">Status</label>
-                <div className="flex gap-2">
-                  {(['todo', 'in_progress', 'done'] as const).map((status) => (
+                <label className="block text-sm font-medium mb-2 text-[var(--color-text)]">Column</label>
+                <div className="flex gap-2 flex-wrap">
+                  {columns.map((column) => (
                     <button
-                      key={status}
-                      onClick={() => handleUpdateTaskStatus(selectedTask.id, status)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        selectedTask.status === status
+                      key={column.id}
+                      onClick={() => handleUpdateTaskColumn(selectedTask.id, column.id)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                        selectedTask.columnId === column.id
                           ? 'bg-[var(--color-primary)] text-[#2B2B2B]'
                           : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
                       }`}
                     >
-                      {status === 'todo' ? 'To Do' : status === 'in_progress' ? 'In Progress' : 'Done'}
+                      <span 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: column.color }}
+                      />
+                      {column.name}
                     </button>
                   ))}
                 </div>
@@ -1270,25 +1564,62 @@ export default function WorkspacePage() {
   );
 }
 
-// Kanban Column Component
-function KanbanColumn({
+// Sortable Kanban Column Component
+function SortableKanbanColumn({
   column,
   tasks,
   onTaskClick,
   remoteCursors,
+  onAddTask,
+  onEditColumn,
+  onDeleteColumn,
+  editingColumnId,
+  editingColumnName,
+  onEditingNameChange,
+  onSaveColumnName,
+  onCancelEdit,
 }: {
-  column: { id: TaskStatus; title: string; color: string };
+  column: KanbanColumn;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   remoteCursors: RemoteCursor[];
+  onAddTask: () => void;
+  onEditColumn: (columnId: string, name: string) => void;
+  onDeleteColumn: (columnId: string) => void;
+  editingColumnId: string | null;
+  editingColumnName: string;
+  onEditingNameChange: (name: string) => void;
+  onSaveColumnName: (columnId: string) => void;
+  onCancelEdit: () => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: column.id,
     data: {
       type: 'column',
-      status: column.id,
+      column,
     },
   });
+
+  // Separate droppable for the task area
+  const { setNodeRef: setTaskDroppableRef, isOver: isOverTaskArea } = useDroppable({
+    id: `column-drop-${column.id}`,
+    data: {
+      type: 'column',
+      columnId: column.id,
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
 
@@ -1305,17 +1636,75 @@ function KanbanColumn({
     return info;
   }, [remoteCursors]);
 
+  const isEditing = editingColumnId === column.id;
+
   return (
-    <div className="w-80 flex-shrink-0">
-      <div className="flex items-center gap-2 mb-4 px-2">
-        <span className={`w-3 h-3 rounded-full ${column.color}`} />
-        <h3 className="font-semibold text-[var(--color-text)]">{column.title}</h3>
-        <span className="text-sm text-[var(--color-text-muted)]">({tasks.length})</span>
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={`w-80 flex-shrink-0 transition-opacity ${isDragging ? 'opacity-50' : ''}`}
+    >
+      {/* Column Header - Entire header is draggable */}
+      <div 
+        {...attributes}
+        {...listeners}
+        className={`flex items-center gap-2 mb-4 px-3 py-2 rounded-lg group cursor-grab active:cursor-grabbing select-none
+          ${isDragging ? 'bg-[var(--color-surface-hover)] shadow-lg' : 'hover:bg-[var(--color-surface-hover)]/50'}
+          transition-all`}
+      >
+        <span 
+          className="w-3 h-3 rounded-full flex-shrink-0" 
+          style={{ backgroundColor: column.color }}
+        />
+        {isEditing ? (
+          <input
+            type="text"
+            value={editingColumnName}
+            onChange={(e) => onEditingNameChange(e.target.value)}
+            onBlur={() => onSaveColumnName(column.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSaveColumnName(column.id);
+              if (e.key === 'Escape') onCancelEdit();
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex-1 text-sm font-semibold bg-[var(--color-bg)] border border-[var(--color-primary)] rounded px-2 py-1 outline-none"
+            autoFocus
+          />
+        ) : (
+          <h3 
+            className="font-semibold text-[var(--color-text)] flex-1 truncate"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              onEditColumn(column.id, column.name);
+            }}
+          >
+            {column.name}
+          </h3>
+        )}
+        <span className="text-sm text-[var(--color-text-muted)] flex-shrink-0">({tasks.length})</span>
+        
+        {/* Column Actions */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteColumn(column.id);
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="p-1 rounded text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+          title="Delete column"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
       </div>
+      
+      {/* Tasks Container */}
       <div
-        ref={setNodeRef}
+        ref={setTaskDroppableRef}
         className={`rounded-xl p-2 min-h-[200px] transition-colors ${
-          isOver ? 'bg-[var(--color-surface-hover)]' : ''
+          isOverTaskArea ? 'bg-[var(--color-surface-hover)]' : ''
         }`}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
@@ -1335,6 +1724,17 @@ function KanbanColumn({
             })}
           </div>
         </SortableContext>
+
+        {/* Add Task Button */}
+        <button
+          onClick={onAddTask}
+          className="w-full mt-3 p-3 rounded-lg border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all flex items-center justify-center gap-2 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] text-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Task
+        </button>
       </div>
     </div>
   );
