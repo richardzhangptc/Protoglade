@@ -230,6 +230,16 @@ export function KanbanBoard({
     const isOverColumnDropArea = overData?.type === 'column';
     const overTask = tasks.find((t) => t.id === overId);
 
+    const sourceColumnId = draggedTask.columnId || columns[0]?.id;
+
+    // If dropping on the column drop area of the same column, don't move the task
+    if (isOverColumnDropArea) {
+      const dropColumnId = overData?.columnId || columns[0]?.id;
+      if (dropColumnId === sourceColumnId) {
+        return;
+      }
+    }
+
     let targetColumnId: string;
 
     if (isOverColumnDropArea) {
@@ -241,7 +251,6 @@ export function KanbanBoard({
       targetColumnId = draggedTask.columnId || columns[0]?.id;
     }
 
-    const sourceColumnId = draggedTask.columnId || columns[0]?.id;
     const isSameColumn = sourceColumnId === targetColumnId;
 
     const targetColumnTasks = tasksByColumn[targetColumnId] || [];
