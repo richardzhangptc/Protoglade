@@ -27,6 +27,7 @@ import {
   useSensors,
   DragStartEvent,
   DragEndEvent,
+  DragOverEvent,
   useDroppable,
   closestCenter,
   pointerWithin,
@@ -112,6 +113,8 @@ export default function WorkspacePage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [activeColumn, setActiveColumn] = useState<KanbanColumn | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [originalTaskColumn, setOriginalTaskColumn] = useState<string | null>(null);
   const [showCreateColumnModal, setShowCreateColumnModal] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [newColumnColor, setNewColumnColor] = useState(COLUMN_COLORS[0]);
@@ -207,7 +210,7 @@ export default function WorkspacePage() {
   );
 
   // Custom collision detection that prioritizes columns when dragging columns,
-  // and tasks when dragging tasks
+  // and handles tasks with pointer-based detection falling back to rect intersection
   const collisionDetectionStrategy: CollisionDetection = useCallback(
     (args) => {
       // If dragging a column, only consider other columns
@@ -220,11 +223,25 @@ export default function WorkspacePage() {
         });
       }
 
-      // For tasks, use pointer within first, then fall back to closest center
+      // For tasks, use pointer within first (for precise task targeting)
       const pointerCollisions = pointerWithin(args);
       if (pointerCollisions.length > 0) {
+        // Prioritize tasks over column drop areas when both match
+        const taskCollision = pointerCollisions.find(
+          (c) => !String(c.id).startsWith('column-drop-')
+        );
+        if (taskCollision) {
+          return [taskCollision];
+        }
         return pointerCollisions;
       }
+      
+      // Fall back to rect intersection for column drop areas
+      const rectCollisions = rectIntersection(args);
+      if (rectCollisions.length > 0) {
+        return rectCollisions;
+      }
+      
       return closestCenter(args);
     },
     [activeColumn, columns]
@@ -572,6 +589,8 @@ export default function WorkspacePage() {
       const task = tasks.find((t) => t.id === active.id);
       if (task) {
         setActiveTask(task);
+        setOverId(null);
+        setOriginalTaskColumn(task.columnId || columns[0]?.id || null);
         emitCursorMove({
           x: lastCursorPosRef.current.x,
           y: lastCursorPosRef.current.y,
@@ -579,6 +598,51 @@ export default function WorkspacePage() {
           dragTaskId: task.id,
           dragTaskTitle: task.title,
         });
+      }
+    }
+  };
+
+  // Handle drag over for cross-column task movement
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    
+    if (!over || !activeTask) return;
+    
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    
+    // Don't do anything if hovering over itself
+    if (activeId === overId) return;
+    
+    const overData = over.data.current;
+    
+    // Find what column we're hovering over
+    let targetColumnId: string | null = null;
+    
+    if (overData?.type === 'column') {
+      // Hovering over a column drop area
+      targetColumnId = overData.columnId;
+    } else {
+      // Hovering over a task - find its column
+      const overTask = tasks.find((t) => t.id === overId);
+      if (overTask) {
+        targetColumnId = overTask.columnId || null;
+      }
+    }
+    
+    if (targetColumnId) {
+      setOverId(overId);
+      
+      // If moving to a different column, update the task's columnId in state
+      const activeTaskColumnId = activeTask.columnId || columns[0]?.id;
+      if (targetColumnId !== activeTaskColumnId) {
+        setTasks((prevTasks) =>
+          prevTasks.map((t) =>
+            t.id === activeId ? { ...t, columnId: targetColumnId } : t
+          )
+        );
+        // Update the activeTask reference
+        setActiveTask((prev) => prev ? { ...prev, columnId: targetColumnId } : null);
       }
     }
   };
@@ -618,6 +682,8 @@ export default function WorkspacePage() {
     // Reset active items
     setActiveTask(null);
     setActiveColumn(null);
+    setOverId(null);
+    setOriginalTaskColumn(null);
 
     emitCursorMove({
       x: lastCursorPosRef.current.x,
@@ -669,75 +735,62 @@ export default function WorkspacePage() {
     const isOverColumnDropArea = overData?.type === 'column';
     const overTask = tasks.find((t) => t.id === overId);
 
-    let targetColumnId: string;
+    // The task's columnId may have been updated by onDragOver, use that
+    let targetColumnId = draggedTask.columnId || columns[0]?.id;
 
+    // If hovering over a column drop area directly, use that column
     if (isOverColumnDropArea) {
-      // Extract the actual column ID from the drop area ID (format: column-drop-{columnId})
-      targetColumnId = overData?.columnId || columns[0]?.id;
-    } else if (overTask) {
-      targetColumnId = overTask.columnId || columns[0]?.id;
-    } else {
-      targetColumnId = draggedTask.columnId || columns[0]?.id;
+      targetColumnId = overData?.columnId || targetColumnId;
     }
 
-    const sourceColumnId = draggedTask.columnId || columns[0]?.id;
-    const isSameColumn = sourceColumnId === targetColumnId;
+    // Use the original column to detect if this was a cross-column move
+    const sourceColumnId = originalTaskColumn || columns[0]?.id;
+    const isCrossColumnMove = sourceColumnId !== targetColumnId;
 
+    // Get tasks in the target column (including the dragged task which was moved by onDragOver)
     const targetColumnTasks = tasksByColumn[targetColumnId] || [];
 
     let newPosition: number;
 
-    if (isOverColumnDropArea) {
-      const lastTask = targetColumnTasks[targetColumnTasks.length - 1];
+    if (isOverColumnDropArea && !overTask) {
+      // Dropped on empty column area - put at end
+      const tasksInColumn = targetColumnTasks.filter((t) => t.id !== activeId);
+      const lastTask = tasksInColumn[tasksInColumn.length - 1];
       newPosition = lastTask ? lastTask.position + 1000 : 1000;
-    } else if (overTask) {
-      const overTaskIndex = targetColumnTasks.findIndex((t) => t.id === overId);
+    } else if (overTask || targetColumnTasks.length > 0) {
+      // Find where the task is positioned in the sortable context
       const activeTaskIndex = targetColumnTasks.findIndex((t) => t.id === activeId);
-
-      if (isSameColumn) {
-        if (activeTaskIndex === overTaskIndex) {
-          return;
-        }
-
-        const movingDown = activeTaskIndex < overTaskIndex;
-
-        if (movingDown) {
-          const targetTask = targetColumnTasks[overTaskIndex];
-          const nextTask = targetColumnTasks[overTaskIndex + 1];
-          if (nextTask) {
-            newPosition = (targetTask.position + nextTask.position) / 2;
-          } else {
-            newPosition = targetTask.position + 1000;
-          }
+      
+      if (activeTaskIndex === -1) {
+        // Task not in this column's list yet, put at end
+        const lastTask = targetColumnTasks[targetColumnTasks.length - 1];
+        newPosition = lastTask ? lastTask.position + 1000 : 1000;
+      } else if (activeTaskIndex === 0) {
+        // First position
+        const nextTask = targetColumnTasks[1];
+        if (nextTask) {
+          newPosition = nextTask.position / 2;
         } else {
-          const targetTask = targetColumnTasks[overTaskIndex];
-          const prevTask = targetColumnTasks[overTaskIndex - 1];
-          if (prevTask) {
-            newPosition = (prevTask.position + targetTask.position) / 2;
-          } else {
-            newPosition = targetTask.position / 2;
-          }
+          newPosition = 1000;
         }
       } else {
-        const targetTasksWithoutActive = targetColumnTasks.filter((t) => t.id !== activeId);
-        const overIndex = targetTasksWithoutActive.findIndex((t) => t.id === overId);
-
-        if (overIndex === 0) {
-          newPosition = targetTasksWithoutActive[0].position / 2;
-        } else if (overIndex > 0) {
-          const prevPosition = targetTasksWithoutActive[overIndex - 1].position;
-          const nextPosition = targetTasksWithoutActive[overIndex].position;
-          newPosition = (prevPosition + nextPosition) / 2;
+        // In between or at end
+        const prevTask = targetColumnTasks[activeTaskIndex - 1];
+        const nextTask = targetColumnTasks[activeTaskIndex + 1];
+        
+        if (nextTask) {
+          newPosition = (prevTask.position + nextTask.position) / 2;
         } else {
-          const lastTask = targetTasksWithoutActive[targetTasksWithoutActive.length - 1];
-          newPosition = lastTask ? lastTask.position + 1000 : 1000;
+          newPosition = prevTask.position + 1000;
         }
       }
     } else {
-      return;
+      // Empty column
+      newPosition = 1000;
     }
 
-    if (isSameColumn && Math.abs(newPosition - draggedTask.position) < 0.001) {
+    // Skip if nothing changed
+    if (!isCrossColumnMove && Math.abs(newPosition - draggedTask.position) < 0.001) {
       return;
     }
 
@@ -1056,16 +1109,16 @@ export default function WorkspacePage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="flex items-center gap-3 flex-shrink-0">
                   <OnlineUsers users={onlineUsers} currentUserId={user?.id} />
                   <button
-                    onClick={() => setShowCreateTaskModal(true)}
-                    className="px-4 py-2 text-sm bg-[var(--color-primary)] text-[#2B2B2B] rounded-lg font-medium hover:bg-[var(--color-primary-hover)] transition-colors flex items-center gap-2"
+                    onClick={() => setShowCreateColumnModal(true)}
+                    className="px-3 py-1.5 text-sm bg-[var(--color-primary)] text-[#2B2B2B] rounded-lg font-medium hover:bg-[var(--color-primary-hover)] transition-colors flex items-center gap-1.5"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    New Task
+                    New Column
                   </button>
                 </div>
               </div>
@@ -1079,7 +1132,7 @@ export default function WorkspacePage() {
             ) : (
               <main
                 ref={boardRef}
-                className="flex-1 overflow-auto p-6 relative"
+                className="flex-1 overflow-auto px-4 py-3 relative"
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
               >
@@ -1089,13 +1142,14 @@ export default function WorkspacePage() {
                   sensors={sensors}
                   collisionDetection={collisionDetectionStrategy}
                   onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext 
                     items={columns.map((c) => c.id)} 
                     strategy={horizontalListSortingStrategy}
                   >
-                    <div className="flex gap-4 min-h-full pb-4" style={{ minWidth: 'max-content' }}>
+                    <div className="flex gap-3 h-full pb-4 items-stretch" style={{ minWidth: 'max-content' }}>
                       {columns.map((column) => (
                         <SortableKanbanColumn
                           key={column.id}
@@ -1119,17 +1173,6 @@ export default function WorkspacePage() {
                           onCancelEdit={() => setEditingColumnId(null)}
                         />
                       ))}
-                      
-                      {/* Add Column Button */}
-                      <button
-                        onClick={() => setShowCreateColumnModal(true)}
-                        className="w-80 flex-shrink-0 min-h-[200px] rounded-xl border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all flex items-center justify-center gap-2 text-[var(--color-text-muted)] hover:text-[var(--color-primary)]"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Column
-                      </button>
                     </div>
                   </SortableContext>
 
@@ -1642,18 +1685,18 @@ function SortableKanbanColumn({
     <div 
       ref={setNodeRef}
       style={style}
-      className={`w-80 flex-shrink-0 transition-opacity ${isDragging ? 'opacity-50' : ''}`}
+      className={`w-64 flex-shrink-0 flex flex-col transition-opacity ${isDragging ? 'opacity-50' : ''}`}
     >
       {/* Column Header - Entire header is draggable */}
       <div 
         {...attributes}
         {...listeners}
-        className={`flex items-center gap-2 mb-4 px-3 py-2 rounded-lg group cursor-grab active:cursor-grabbing select-none
+        className={`flex items-center gap-1.5 mb-2 px-2 py-1.5 rounded-lg group cursor-grab active:cursor-grabbing select-none
           ${isDragging ? 'bg-[var(--color-surface-hover)] shadow-lg' : 'hover:bg-[var(--color-surface-hover)]/50'}
           transition-all`}
       >
         <span 
-          className="w-3 h-3 rounded-full flex-shrink-0" 
+          className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
           style={{ backgroundColor: column.color }}
         />
         {isEditing ? (
@@ -1668,12 +1711,12 @@ function SortableKanbanColumn({
             }}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className="flex-1 text-sm font-semibold bg-[var(--color-bg)] border border-[var(--color-primary)] rounded px-2 py-1 outline-none"
+            className="flex-1 text-sm font-medium bg-[var(--color-bg)] border border-[var(--color-primary)] rounded px-1.5 py-0.5 outline-none"
             autoFocus
           />
         ) : (
           <h3 
-            className="font-semibold text-[var(--color-text)] flex-1 truncate"
+            className="font-medium text-sm text-[var(--color-text)] flex-1 truncate"
             onDoubleClick={(e) => {
               e.stopPropagation();
               onEditColumn(column.id, column.name);
@@ -1682,7 +1725,7 @@ function SortableKanbanColumn({
             {column.name}
           </h3>
         )}
-        <span className="text-sm text-[var(--color-text-muted)] flex-shrink-0">({tasks.length})</span>
+        <span className="text-xs text-[var(--color-text-muted)] flex-shrink-0">{tasks.length}</span>
         
         {/* Column Actions */}
         <button
@@ -1700,15 +1743,15 @@ function SortableKanbanColumn({
         </button>
       </div>
       
-      {/* Tasks Container */}
+      {/* Tasks Container - Entire area is droppable */}
       <div
         ref={setTaskDroppableRef}
-        className={`rounded-xl p-2 min-h-[200px] transition-colors ${
-          isOverTaskArea ? 'bg-[var(--color-surface-hover)]' : ''
+        className={`rounded-lg p-1.5 flex-1 min-h-[200px] transition-colors ${
+          isOverTaskArea ? 'bg-[var(--color-surface-hover)]/50' : ''
         }`}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             {tasks.map((task) => {
               const dragInfo = remoteDragInfo.get(task.id);
               return (
@@ -1728,12 +1771,12 @@ function SortableKanbanColumn({
         {/* Add Task Button */}
         <button
           onClick={onAddTask}
-          className="w-full mt-3 p-3 rounded-lg border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all flex items-center justify-center gap-2 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] text-sm"
+          className="w-full mt-1.5 py-1.5 px-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-all flex items-center gap-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-xs"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Add Task
+          Add task
         </button>
       </div>
     </div>
@@ -1813,8 +1856,8 @@ function TaskCard({
   return (
     <div
       onClick={onClick}
-      className={`bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 w-full text-left transition-all relative ${
-        isOverlay ? 'shadow-2xl rotate-2 scale-105' : ''
+      className={`bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 w-full text-left transition-all relative ${
+        isOverlay ? 'shadow-2xl rotate-1 scale-105' : ''
       } ${
         isLockedByRemote 
           ? 'cursor-not-allowed opacity-60' 
@@ -1825,19 +1868,19 @@ function TaskCard({
         <RemoteDragIndicator userName={lockedByUserName} userColor={lockedByUserColor} />
       )}
       
-      <h4 className="font-medium mb-2 text-[var(--color-text)]">{task.title}</h4>
+      <h4 className="font-medium text-sm text-[var(--color-text)] leading-tight">{task.title}</h4>
       {task.description && (
-        <p className="text-sm text-[var(--color-text-muted)] line-clamp-2 mb-3">
+        <p className="text-xs text-[var(--color-text-muted)] line-clamp-1 mt-1">
           {task.description}
         </p>
       )}
-      <div className="flex items-center gap-2">
-        <span className={`badge ${priorityColors[task.priority]}`}>
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <span className={`badge text-[10px] px-1.5 py-0.5 ${priorityColors[task.priority]}`}>
           {task.priority}
         </span>
         {task._count && task._count.comments > 0 && (
-          <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="text-[10px] text-[var(--color-text-muted)] flex items-center gap-0.5">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
             {task._count.comments}
