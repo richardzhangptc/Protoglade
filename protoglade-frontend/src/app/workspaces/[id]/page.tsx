@@ -115,6 +115,7 @@ export default function WorkspacePage() {
   const [activeColumn, setActiveColumn] = useState<KanbanColumn | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [originalTaskColumn, setOriginalTaskColumn] = useState<string | null>(null);
+  const [insertionIndex, setInsertionIndex] = useState<number | null>(null);
   const [showCreateColumnModal, setShowCreateColumnModal] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [newColumnColor, setNewColumnColor] = useState(COLUMN_COLORS[0]);
@@ -633,7 +634,8 @@ export default function WorkspacePage() {
     if (targetColumnId) {
       setOverId(overId);
       
-      // If moving to a different column, update the task's columnId in state
+      // If moving to a different column, update the task's columnId in state for visual feedback
+      // But don't update positions yet - that happens in handleDragEnd
       const activeTaskColumnId = activeTask.columnId || columns[0]?.id;
       if (targetColumnId !== activeTaskColumnId) {
         setTasks((prevTasks) =>
@@ -684,6 +686,7 @@ export default function WorkspacePage() {
     setActiveColumn(null);
     setOverId(null);
     setOriginalTaskColumn(null);
+    setInsertionIndex(null);
 
     emitCursorMove({
       x: lastCursorPosRef.current.x,
@@ -735,58 +738,123 @@ export default function WorkspacePage() {
     const isOverColumnDropArea = overData?.type === 'column';
     const overTask = tasks.find((t) => t.id === overId);
 
-    // The task's columnId may have been updated by onDragOver, use that
+    // Determine target column
     let targetColumnId = draggedTask.columnId || columns[0]?.id;
-
-    // If hovering over a column drop area directly, use that column
     if (isOverColumnDropArea) {
       targetColumnId = overData?.columnId || targetColumnId;
+    } else if (overTask) {
+      targetColumnId = overTask.columnId || targetColumnId;
     }
 
     // Use the original column to detect if this was a cross-column move
     const sourceColumnId = originalTaskColumn || columns[0]?.id;
     const isCrossColumnMove = sourceColumnId !== targetColumnId;
 
-    // Get tasks in the target column (including the dragged task which was moved by onDragOver)
-    const targetColumnTasks = tasksByColumn[targetColumnId] || [];
-
-    let newPosition: number;
-
-    if (isOverColumnDropArea && !overTask) {
-      // Dropped on empty column area - put at end
-      const tasksInColumn = targetColumnTasks.filter((t) => t.id !== activeId);
-      const lastTask = tasksInColumn[tasksInColumn.length - 1];
-      newPosition = lastTask ? lastTask.position + 1000 : 1000;
-    } else if (overTask || targetColumnTasks.length > 0) {
-      // Find where the task is positioned in the sortable context
-      const activeTaskIndex = targetColumnTasks.findIndex((t) => t.id === activeId);
-      
-      if (activeTaskIndex === -1) {
-        // Task not in this column's list yet, put at end
-        const lastTask = targetColumnTasks[targetColumnTasks.length - 1];
-        newPosition = lastTask ? lastTask.position + 1000 : 1000;
-      } else if (activeTaskIndex === 0) {
-        // First position
-        const nextTask = targetColumnTasks[1];
-        if (nextTask) {
-          newPosition = nextTask.position / 2;
-        } else {
-          newPosition = 1000;
+    // Get all tasks currently in target column, sorted by position
+    // For same-column drags, include dragged task; for cross-column, exclude it
+    const targetColumnTasks = tasks
+      .filter((t) => {
+        if (t.id === activeId) {
+          return !isCrossColumnMove; // Include only if same-column drag
         }
+        return t.columnId === targetColumnId;
+      })
+      .sort((a, b) => a.position - b.position);
+
+    const allTaskIds = targetColumnTasks.map((t) => t.id);
+    const oldIndex = isCrossColumnMove ? -1 : allTaskIds.indexOf(activeId);
+
+    // Determine where to insert based on what we're hovering over
+    let insertIndex: number;
+    
+    if (isOverColumnDropArea && !overTask) {
+      // Dropped on empty column area - insert at end
+      insertIndex = allTaskIds.length;
+    } else if (overTask && overTask.columnId === targetColumnId) {
+      // Dropped over a task in target column
+      const overIndex = allTaskIds.indexOf(overTask.id);
+      
+      if (overIndex === -1) {
+        insertIndex = allTaskIds.length;
       } else {
-        // In between or at end
-        const prevTask = targetColumnTasks[activeTaskIndex - 1];
-        const nextTask = targetColumnTasks[activeTaskIndex + 1];
+        // Use the actual Y position to determine if we're inserting before or after
+        const activeRect = active.rect.current.translated;
+        const overRect = over.rect;
         
-        if (nextTask) {
-          newPosition = (prevTask.position + nextTask.position) / 2;
+        if (activeRect && overRect) {
+          const activeCenterY = activeRect.top + activeRect.height / 2;
+          const overCenterY = overRect.top + overRect.height / 2;
+          // If dragged element's center is below target's center, insert after
+          insertIndex = activeCenterY > overCenterY ? overIndex + 1 : overIndex;
         } else {
-          newPosition = prevTask.position + 1000;
+          // Fallback: insert after
+          insertIndex = overIndex + 1;
         }
       }
     } else {
-      // Empty column
+      // Fallback: insert at end
+      insertIndex = allTaskIds.length;
+    }
+
+    // Calculate final order using arrayMove (matches dnd-kit's visual order)
+    let finalOrder: string[];
+    if (oldIndex === -1) {
+      // Cross-column: insert at insertIndex
+      finalOrder = [
+        ...allTaskIds.slice(0, insertIndex),
+        activeId,
+        ...allTaskIds.slice(insertIndex),
+      ];
+    } else {
+      // Same-column: use arrayMove
+      // insertIndex is where we want to insert in the full array
+      // But arrayMove needs the index after removing oldIndex
+      // If moving forward (oldIndex < insertIndex), we need to subtract 1
+      // If moving backward (oldIndex >= insertIndex), use insertIndex as-is
+      const adjustedIndex = insertIndex > oldIndex ? insertIndex - 1 : insertIndex;
+      finalOrder = arrayMove(allTaskIds, oldIndex, Math.max(0, Math.min(adjustedIndex, allTaskIds.length - 1)));
+    }
+
+    // Create a map of tasks by ID (excluding dragged task for position calculation)
+    const taskMap = new Map(
+      tasks
+        .filter((t) => t.columnId === targetColumnId && t.id !== activeId)
+        .map((t) => [t.id, t])
+    );
+
+    // Calculate position based on final order
+    const finalIndex = finalOrder.indexOf(activeId);
+    let newPosition: number;
+
+    if (finalOrder.length === 1) {
+      // Only task in column
       newPosition = 1000;
+    } else if (finalIndex === 0) {
+      // First position - place before the first existing task
+      const firstTaskId = finalOrder[1];
+      const firstTask = taskMap.get(firstTaskId);
+      newPosition = firstTask ? firstTask.position / 2 : 1000;
+    } else if (finalIndex === finalOrder.length - 1) {
+      // Last position - place after the last existing task
+      const lastTaskId = finalOrder[finalIndex - 1];
+      const lastTask = taskMap.get(lastTaskId);
+      newPosition = lastTask ? lastTask.position + 1000 : 1000;
+    } else {
+      // Middle position - between two existing tasks
+      const prevTaskId = finalOrder[finalIndex - 1];
+      const nextTaskId = finalOrder[finalIndex + 1];
+      const prevTask = taskMap.get(prevTaskId);
+      const nextTask = taskMap.get(nextTaskId);
+      
+      if (prevTask && nextTask) {
+        newPosition = (prevTask.position + nextTask.position) / 2;
+      } else if (prevTask) {
+        newPosition = prevTask.position + 1000;
+      } else if (nextTask) {
+        newPosition = nextTask.position / 2;
+      } else {
+        newPosition = 1000;
+      }
     }
 
     // Skip if nothing changed
