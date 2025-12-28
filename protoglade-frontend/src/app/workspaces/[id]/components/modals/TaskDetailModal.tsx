@@ -103,8 +103,14 @@ export function TaskDetailModal({
     setIsSubmittingComment(true);
     try {
       const comment = await api.createComment(task.id, newComment);
-      setComments([...comments, comment]);
+      const newComments = [...comments, comment];
+      setComments(newComments);
       setNewComment('');
+      // Update the task's comment count
+      onUpdate({
+        ...task,
+        _count: { comments: newComments.length },
+      });
     } catch (error) {
       console.error('Failed to add comment:', error);
     } finally {
@@ -115,7 +121,13 @@ export function TaskDetailModal({
   const handleDeleteComment = async (commentId: string) => {
     try {
       await api.deleteComment(commentId);
-      setComments(comments.filter((c) => c.id !== commentId));
+      const newComments = comments.filter((c) => c.id !== commentId);
+      setComments(newComments);
+      // Update the task's comment count
+      onUpdate({
+        ...task,
+        _count: { comments: newComments.length },
+      });
     } catch (error) {
       console.error('Failed to delete comment:', error);
     }
