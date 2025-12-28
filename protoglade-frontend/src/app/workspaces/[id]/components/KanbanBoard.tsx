@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -7,7 +7,9 @@ import {
   useSensor,
   useSensors,
   DragStartEvent,
+  DragOverEvent,
   DragEndEvent,
+  DragCancelEvent,
   CollisionDetection,
   closestCenter,
   pointerWithin,
@@ -43,7 +45,6 @@ interface KanbanBoardProps {
   onEditingNameChange: (name: string) => void;
   onSaveColumnName: (columnId: string) => void;
   onCancelEdit: () => void;
-  onAddColumn: () => void;
   onTaskUpdated: (task: Task) => void;
   onColumnsReordered: (columns: KanbanColumnType[]) => void;
   onLoadProjectData: (projectId: string) => void;
@@ -73,7 +74,6 @@ export function KanbanBoard({
   onEditingNameChange,
   onSaveColumnName,
   onCancelEdit,
-  onAddColumn,
   onTaskUpdated,
   onColumnsReordered,
   onLoadProjectData,
@@ -86,6 +86,7 @@ export function KanbanBoard({
   lastCursorPosRef,
 }: KanbanBoardProps) {
   const boardRef = useRef<HTMLElement | null>(null);
+  const [hoveredColumnId, setHoveredColumnId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -163,6 +164,7 @@ export function KanbanBoard({
       const task = tasks.find((t) => t.id === active.id);
       if (task) {
         setActiveTask(task);
+        setHoveredColumnId(task.columnId || columns[0]?.id || null);
         onCursorMove({
           x: lastCursorPosRef.current.x,
           y: lastCursorPosRef.current.y,
@@ -174,6 +176,35 @@ export function KanbanBoard({
     }
   };
 
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) {
+      setHoveredColumnId(null);
+      return;
+    }
+
+    const activeData = active.data.current;
+    if (activeData?.type === 'column') {
+      setHoveredColumnId(null);
+      return;
+    }
+
+    const overData = over.data.current;
+    if (overData?.type === 'column') {
+      setHoveredColumnId((overData?.columnId as string | undefined) || null);
+      return;
+    }
+
+    const overTask = tasks.find((t) => t.id === (over.id as string));
+    setHoveredColumnId(overTask?.columnId || null);
+  };
+
+  const handleDragCancel = (_event: DragCancelEvent) => {
+    setHoveredColumnId(null);
+    setActiveTask(null);
+    setActiveColumn(null);
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     const activeData = active.data.current;
@@ -181,6 +212,7 @@ export function KanbanBoard({
     // Reset active items
     setActiveTask(null);
     setActiveColumn(null);
+    setHoveredColumnId(null);
 
     onCursorMove({
       x: lastCursorPosRef.current.x,
@@ -257,50 +289,38 @@ export function KanbanBoard({
 
     let newPosition: number;
 
-    if (isOverColumnDropArea) {
+    // If moving into a different column, always append to the bottom regardless of drop position.
+    if (!isSameColumn) {
+      const lastTask = targetColumnTasks[targetColumnTasks.length - 1];
+      newPosition = lastTask ? lastTask.position + 1000 : 1000;
+    } else if (isOverColumnDropArea) {
       const lastTask = targetColumnTasks[targetColumnTasks.length - 1];
       newPosition = lastTask ? lastTask.position + 1000 : 1000;
     } else if (overTask) {
       const overTaskIndex = targetColumnTasks.findIndex((t) => t.id === overId);
       const activeTaskIndex = targetColumnTasks.findIndex((t) => t.id === activeId);
 
-      if (isSameColumn) {
-        if (activeTaskIndex === overTaskIndex) {
-          return;
-        }
+      if (activeTaskIndex === overTaskIndex) {
+        return;
+      }
 
-        const movingDown = activeTaskIndex < overTaskIndex;
+      const movingDown = activeTaskIndex < overTaskIndex;
 
-        if (movingDown) {
-          const targetTask = targetColumnTasks[overTaskIndex];
-          const nextTask = targetColumnTasks[overTaskIndex + 1];
-          if (nextTask) {
-            newPosition = (targetTask.position + nextTask.position) / 2;
-          } else {
-            newPosition = targetTask.position + 1000;
-          }
+      if (movingDown) {
+        const targetTask = targetColumnTasks[overTaskIndex];
+        const nextTask = targetColumnTasks[overTaskIndex + 1];
+        if (nextTask) {
+          newPosition = (targetTask.position + nextTask.position) / 2;
         } else {
-          const targetTask = targetColumnTasks[overTaskIndex];
-          const prevTask = targetColumnTasks[overTaskIndex - 1];
-          if (prevTask) {
-            newPosition = (prevTask.position + targetTask.position) / 2;
-          } else {
-            newPosition = targetTask.position / 2;
-          }
+          newPosition = targetTask.position + 1000;
         }
       } else {
-        const targetTasksWithoutActive = targetColumnTasks.filter((t) => t.id !== activeId);
-        const overIndex = targetTasksWithoutActive.findIndex((t) => t.id === overId);
-
-        if (overIndex === 0) {
-          newPosition = targetTasksWithoutActive[0].position / 2;
-        } else if (overIndex > 0) {
-          const prevPosition = targetTasksWithoutActive[overIndex - 1].position;
-          const nextPosition = targetTasksWithoutActive[overIndex].position;
-          newPosition = (prevPosition + nextPosition) / 2;
+        const targetTask = targetColumnTasks[overTaskIndex];
+        const prevTask = targetColumnTasks[overTaskIndex - 1];
+        if (prevTask) {
+          newPosition = (prevTask.position + targetTask.position) / 2;
         } else {
-          const lastTask = targetTasksWithoutActive[targetTasksWithoutActive.length - 1];
-          newPosition = lastTask ? lastTask.position + 1000 : 1000;
+          newPosition = targetTask.position / 2;
         }
       }
     } else {
@@ -334,7 +354,7 @@ export function KanbanBoard({
   return (
     <main
       ref={boardRef}
-      className="flex-1 overflow-auto p-6 relative"
+      className="flex-1 overflow-auto p-4 relative"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -344,18 +364,21 @@ export function KanbanBoard({
         sensors={sensors}
         collisionDetection={collisionDetectionStrategy}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
         <SortableContext 
           items={columns.map((c) => c.id)} 
           strategy={horizontalListSortingStrategy}
         >
-          <div className="flex gap-4 min-h-full pb-4" style={{ minWidth: 'max-content' }}>
+          <div className="flex gap-3 min-h-full pb-4" style={{ minWidth: 'max-content' }}>
             {columns.map((column) => (
               <KanbanColumn
                 key={column.id}
                 column={column}
                 tasks={tasksByColumn[column.id] || []}
+                isDropTarget={!!activeTask && hoveredColumnId === column.id}
                 onTaskClick={onTaskClick}
                 remoteCursors={remoteCursors}
                 onAddTask={() => onAddTask(column.id)}
@@ -368,17 +391,6 @@ export function KanbanBoard({
                 onCancelEdit={onCancelEdit}
               />
             ))}
-            
-            {/* Add Column Button */}
-            <button
-              onClick={onAddColumn}
-              className="w-80 flex-shrink-0 min-h-[200px] rounded-xl border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all flex items-center justify-center gap-2 text-[var(--color-text-muted)] hover:text-[var(--color-primary)]"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Column
-            </button>
           </div>
         </SortableContext>
 

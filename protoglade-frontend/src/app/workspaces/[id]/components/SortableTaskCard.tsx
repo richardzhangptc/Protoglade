@@ -34,8 +34,9 @@ export function SortableTaskCard({
     disabled: isLockedByRemote,
   });
 
+  // Use Translate instead of Transform to avoid scaling issues with variable height items
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
   };

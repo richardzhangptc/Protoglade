@@ -11,6 +11,7 @@ import { COLUMN_COLORS } from './constants';
 interface KanbanColumnProps {
   column: KanbanColumnType;
   tasks: Task[];
+  isDropTarget?: boolean;
   onTaskClick: (task: Task) => void;
   remoteCursors: RemoteCursor[];
   onAddTask: () => void;
@@ -26,6 +27,7 @@ interface KanbanColumnProps {
 export function KanbanColumn({
   column,
   tasks,
+  isDropTarget = false,
   onTaskClick,
   remoteCursors,
   onAddTask,
@@ -87,13 +89,13 @@ export function KanbanColumn({
     <div 
       ref={setNodeRef}
       style={style}
-      className={`w-80 flex-shrink-0 transition-opacity ${isDragging ? 'opacity-50' : ''}`}
+      className={`w-64 flex-shrink-0 transition-opacity ${isDragging ? 'opacity-50' : ''}`}
     >
       {/* Column Header - Entire header is draggable */}
       <div 
         {...attributes}
         {...listeners}
-        className={`flex items-center gap-2 mb-4 px-3 py-2 rounded-lg group cursor-grab active:cursor-grabbing select-none
+        className={`flex items-center gap-1.5 mb-3 px-2 py-1.5 rounded-lg group cursor-grab active:cursor-grabbing select-none
           ${isDragging ? 'bg-[var(--color-surface-hover)] shadow-lg' : 'hover:bg-[var(--color-surface-hover)]/50'}
           transition-all`}
       >
@@ -148,12 +150,16 @@ export function KanbanColumn({
       {/* Tasks Container */}
       <div
         ref={setTaskDroppableRef}
-        className={`rounded-xl p-2 min-h-[200px] transition-colors ${
+        className={`rounded-xl p-1.5 min-h-[200px] transition-all ${
           isOverTaskArea ? 'bg-[var(--color-surface-hover)]' : ''
+        } ${
+          isDropTarget
+            ? 'ring-2 ring-[var(--color-primary)] shadow-lg bg-[var(--color-surface-hover)]'
+            : ''
         }`}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {tasks.map((task) => {
               const dragInfo = remoteDragInfo.get(task.id);
               return (
@@ -173,9 +179,9 @@ export function KanbanColumn({
         {/* Add Task Button */}
         <button
           onClick={onAddTask}
-          className="w-full mt-3 p-3 rounded-lg border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all flex items-center justify-center gap-2 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] text-sm"
+          className="mt-2 p-2 rounded-lg hover:bg-[var(--color-surface-hover)] transition-all flex items-center gap-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] text-xs"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           Add Task

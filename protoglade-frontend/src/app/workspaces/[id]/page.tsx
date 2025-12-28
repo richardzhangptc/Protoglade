@@ -23,7 +23,7 @@ import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { CreateColumnModal } from './components/modals/CreateColumnModal';
 import { InviteMemberModal } from './components/modals/InviteMemberModal';
 import { RemoveMemberModal } from './components/modals/RemoveMemberModal';
-import { TaskDetailSidebar } from './components/modals/TaskDetailSidebar';
+import { TaskDetailModal } from './components/modals/TaskDetailModal';
 import { SidebarView, COLUMN_COLORS } from './components/constants';
 
 export default function WorkspacePage() {
@@ -67,7 +67,7 @@ export default function WorkspacePage() {
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [createTaskColumnId, setCreateTaskColumnId] = useState<string | null>(null);
-  const [newTask, setNewTask] = useState({ title: '', description: '', priority: 'medium' });
+  const [newTask, setNewTask] = useState({ title: '', description: '' });
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -335,12 +335,13 @@ export default function WorkspacePage() {
     setIsCreatingTask(true);
     try {
       const task = await api.createTask({
-        ...newTask,
+        title: newTask.title,
+        description: newTask.description || undefined,
         projectId: selectedProjectId,
         columnId: createTaskColumnId || columns[0]?.id,
       });
       setTasks([...tasks, task]);
-      setNewTask({ title: '', description: '', priority: 'medium' });
+      setNewTask({ title: '', description: '' });
       setShowCreateTaskModal(false);
       setCreateTaskColumnId(null);
       emitTaskCreated(task);
@@ -412,19 +413,6 @@ export default function WorkspacePage() {
       emitColumnDeleted(columnId);
     } catch (error) {
       console.error('Failed to delete column:', error);
-    }
-  };
-
-  const handleUpdateTaskColumn = async (taskId: string, columnId: string) => {
-    try {
-      const updated = await api.updateTask(taskId, { columnId });
-      setTasks(tasks.map((t) => (t.id === taskId ? updated : t)));
-      if (selectedTask?.id === taskId) {
-        setSelectedTask(updated);
-      }
-      emitTaskUpdated(updated);
-    } catch (error) {
-      console.error('Failed to update task:', error);
     }
   };
 
@@ -513,7 +501,7 @@ export default function WorkspacePage() {
               project={selectedProject}
               sidebarCollapsed={sidebarCollapsed}
               onExpandSidebar={() => setSidebarCollapsed(false)}
-              onCreateTask={() => setShowCreateTaskModal(true)}
+              onCreateColumn={() => setShowCreateColumnModal(true)}
               onlineUsers={onlineUsers}
               currentUserId={user?.id}
             />
@@ -547,7 +535,6 @@ export default function WorkspacePage() {
                 onEditingNameChange={setEditingColumnName}
                 onSaveColumnName={handleUpdateColumnName}
                 onCancelEdit={() => setEditingColumnId(null)}
-                onAddColumn={() => setShowCreateColumnModal(true)}
                 onTaskUpdated={handleTaskUpdated}
                 onColumnsReordered={handleColumnsReordered}
                 onLoadProjectData={loadProjectData}
@@ -591,7 +578,6 @@ export default function WorkspacePage() {
         isOpen={showCreateTaskModal}
         title={newTask.title}
         description={newTask.description}
-        priority={newTask.priority}
         isCreating={isCreatingTask}
         onClose={() => {
           setShowCreateTaskModal(false);
@@ -599,7 +585,6 @@ export default function WorkspacePage() {
         }}
         onTitleChange={(title) => setNewTask({ ...newTask, title })}
         onDescriptionChange={(description) => setNewTask({ ...newTask, description })}
-        onPriorityChange={(priority) => setNewTask({ ...newTask, priority })}
         onSubmit={handleCreateTask}
       />
 
@@ -647,11 +632,15 @@ export default function WorkspacePage() {
       />
 
       {selectedTask && (
-        <TaskDetailSidebar
+        <TaskDetailModal
           task={selectedTask}
           columns={columns}
           onClose={() => setSelectedTask(null)}
-          onUpdateColumn={handleUpdateTaskColumn}
+          onUpdate={(task) => {
+            setTasks(tasks.map((t) => (t.id === task.id ? task : t)));
+            setSelectedTask(task);
+            emitTaskUpdated(task);
+          }}
           onDelete={handleDeleteTask}
         />
       )}

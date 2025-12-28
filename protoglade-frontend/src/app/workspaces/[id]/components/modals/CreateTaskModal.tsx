@@ -2,12 +2,10 @@ interface CreateTaskModalProps {
   isOpen: boolean;
   title: string;
   description: string;
-  priority: string;
   isCreating: boolean;
   onClose: () => void;
   onTitleChange: (title: string) => void;
   onDescriptionChange: (description: string) => void;
-  onPriorityChange: (priority: string) => void;
   onSubmit: (e: React.FormEvent) => void;
 }
 
@@ -15,12 +13,10 @@ export function CreateTaskModal({
   isOpen,
   title,
   description,
-  priority,
   isCreating,
   onClose,
   onTitleChange,
   onDescriptionChange,
-  onPriorityChange,
   onSubmit,
 }: CreateTaskModalProps) {
   if (!isOpen) return null;
@@ -51,18 +47,6 @@ export function CreateTaskModal({
               rows={3}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--color-text)]">Priority</label>
-            <select
-              value={priority}
-              onChange={(e) => onPriorityChange(e.target.value)}
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </select>
-          </div>
           <div className="flex gap-3 justify-end">
             <button
               type="button"
@@ -84,4 +68,3 @@ export function CreateTaskModal({
     </div>
   );
 }
-

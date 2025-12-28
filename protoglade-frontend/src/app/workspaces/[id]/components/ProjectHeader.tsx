@@ -6,7 +6,7 @@ interface ProjectHeaderProps {
   project: Project;
   sidebarCollapsed: boolean;
   onExpandSidebar: () => void;
-  onCreateTask: () => void;
+  onCreateColumn: () => void;
   onlineUsers: OnlineUser[];
   currentUserId?: string;
 }
@@ -15,7 +15,7 @@ export function ProjectHeader({
   project,
   sidebarCollapsed,
   onExpandSidebar,
-  onCreateTask,
+  onCreateColumn,
   onlineUsers,
   currentUserId,
 }: ProjectHeaderProps) {
@@ -47,13 +47,13 @@ export function ProjectHeader({
         <div className="flex items-center gap-4 flex-shrink-0">
           <OnlineUsers users={onlineUsers} currentUserId={currentUserId} />
           <button
-            onClick={onCreateTask}
+            onClick={onCreateColumn}
             className="px-4 py-2 text-sm bg-[var(--color-primary)] text-[#2B2B2B] rounded-lg font-medium hover:bg-[var(--color-primary-hover)] transition-colors flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
             </svg>
-            New Task
+            New Column
           </button>
         </div>
       </div>

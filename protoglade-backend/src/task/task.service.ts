@@ -49,6 +49,7 @@ export class TaskService {
         assignee: { select: { id: true, email: true, name: true } },
         project: { select: { id: true, name: true } },
         column: { select: { id: true, name: true, color: true } },
+        _count: { select: { comments: true } },
       },
     });
 
@@ -136,6 +137,7 @@ export class TaskService {
         assignee: { select: { id: true, email: true, name: true } },
         project: { select: { id: true, name: true } },
         column: { select: { id: true, name: true, color: true } },
+        _count: { select: { comments: true } },
       },
     });
   }
