@@ -10,6 +10,7 @@ export interface User {
 export interface Workspace {
   id: string;
   name: string;
+  position: number;
   createdAt: string;
   updatedAt: string;
   myRole: 'owner' | 'admin' | 'member';
@@ -28,10 +29,20 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
+  position: number;
   createdAt: string;
   updatedAt: string;
   workspaceId: string;
   _count?: { tasks: number };
+}
+
+// Task Assignment types
+export interface TaskAssignment {
+  id: string;
+  createdAt: string;
+  taskId: string;
+  userId: string;
+  user: User;
 }
 
 // Task types
@@ -43,12 +54,14 @@ export interface Task {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueDate: string | null;
   position: number;
+  labels: string[];  // Color labels (hex colors)
   createdAt: string;
   updatedAt: string;
   projectId: string;
   columnId: string | null;
   column?: KanbanColumn | null;
   assignee: User | null;
+  assignments?: TaskAssignment[];  // Multiple assignees
   _count?: { comments: number };
   comments?: Comment[];
 }

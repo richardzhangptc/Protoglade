@@ -1,7 +1,25 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Workspace } from '@/types';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { api } from '@/lib/api';
 
 interface WorkspaceSwitcherProps {
   workspace: Workspace | null;
@@ -12,6 +30,55 @@ interface WorkspaceSwitcherProps {
   onClose: () => void;
   onCreateWorkspace: () => void;
   onCollapse: () => void;
+  onWorkspacesReordered: (workspaces: Workspace[]) => void;
+}
+
+interface SortableWorkspaceItemProps {
+  workspace: Workspace;
+  isActive: boolean;
+  onSelect: () => void;
+}
+
+function SortableWorkspaceItem({ workspace, isActive, onSelect }: SortableWorkspaceItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: workspace.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform && { ...transform, x: 0 }), // Lock horizontal movement
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <button
+        onClick={onSelect}
+        {...listeners}
+        {...attributes}
+        className={`flex items-center gap-3 px-3 py-2 w-full text-left transition-colors cursor-grab active:cursor-grabbing ${
+          isActive
+            ? 'bg-[var(--color-primary)]/10 text-[var(--color-text)]' 
+            : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]'
+        }`}
+      >
+        <div className="w-6 h-6 rounded-md bg-[var(--color-surface-hover)] border border-[var(--color-border)] flex items-center justify-center text-xs font-medium">
+          {workspace.name.charAt(0).toUpperCase()}
+        </div>
+        <span className="text-sm truncate flex-1">{workspace.name}</span>
+        {isActive && (
+          <svg className="w-4 h-4 text-[var(--color-primary)]" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
 }
 
 export function WorkspaceSwitcher({
@@ -23,9 +90,16 @@ export function WorkspaceSwitcher({
   onClose,
   onCreateWorkspace,
   onCollapse,
+  onWorkspacesReordered,
 }: WorkspaceSwitcherProps) {
   const router = useRouter();
   const workspaceSwitcherRef = useRef<HTMLDivElement>(null);
+  const [localWorkspaces, setLocalWorkspaces] = useState(allWorkspaces);
+
+  // Update local workspaces when props change
+  useEffect(() => {
+    setLocalWorkspaces(allWorkspaces);
+  }, [allWorkspaces]);
 
   // Close workspace switcher when clicking outside
   useEffect(() => {
@@ -37,6 +111,41 @@ export function WorkspaceSwitcher({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleWorkspaceDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = localWorkspaces.findIndex((w) => w.id === active.id);
+      const newIndex = localWorkspaces.findIndex((w) => w.id === over.id);
+
+      const newWorkspaces = arrayMove(localWorkspaces, oldIndex, newIndex);
+      setLocalWorkspaces(newWorkspaces);
+
+      // Update on server
+      try {
+        const reorderedWorkspaces = await api.reorderWorkspaces(
+          newWorkspaces.map((w) => w.id)
+        );
+        onWorkspacesReordered(reorderedWorkspaces);
+      } catch (error) {
+        console.error('Failed to reorder workspaces:', error);
+        // Revert on error
+        setLocalWorkspaces(allWorkspaces);
+      }
+    }
+  }, [localWorkspaces, allWorkspaces, onWorkspacesReordered]);
 
   return (
     <div className="p-3 border-b border-[var(--color-border)] relative" ref={workspaceSwitcherRef}>
@@ -82,32 +191,30 @@ export function WorkspaceSwitcher({
       {showWorkspaceSwitcher && (
         <div className="absolute left-3 right-3 top-full mt-1 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg z-50">
           <div className="max-h-64 overflow-y-auto">
-            {allWorkspaces.map((ws) => (
-              <button
-                key={ws.id}
-                onClick={() => {
-                  onClose();
-                  if (ws.id !== workspaceId) {
-                    router.push(`/workspaces/${ws.id}`);
-                  }
-                }}
-                className={`flex items-center gap-3 px-3 py-2 w-full text-left transition-colors ${
-                  ws.id === workspaceId 
-                    ? 'bg-[var(--color-primary)]/10 text-[var(--color-text)]' 
-                    : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]'
-                }`}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleWorkspaceDragEnd}
+            >
+              <SortableContext
+                items={localWorkspaces.map((w) => w.id)}
+                strategy={verticalListSortingStrategy}
               >
-                <div className="w-6 h-6 rounded-md bg-[var(--color-surface-hover)] border border-[var(--color-border)] flex items-center justify-center text-xs font-medium">
-                  {ws.name.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-sm truncate flex-1">{ws.name}</span>
-                {ws.id === workspaceId && (
-                  <svg className="w-4 h-4 text-[var(--color-primary)]" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </button>
-            ))}
+                {localWorkspaces.map((ws) => (
+                  <SortableWorkspaceItem
+                    key={ws.id}
+                    workspace={ws}
+                    isActive={ws.id === workspaceId}
+                    onSelect={() => {
+                      onClose();
+                      if (ws.id !== workspaceId) {
+                        router.push(`/workspaces/${ws.id}`);
+                      }
+                    }}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
           </div>
           <div className="border-t border-[var(--color-border)] mt-1 pt-1">
             <button
@@ -149,4 +256,3 @@ export function WorkspaceSwitcher({
     </div>
   );
 }
-

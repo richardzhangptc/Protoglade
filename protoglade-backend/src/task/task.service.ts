@@ -44,11 +44,18 @@ export class TaskService {
         projectId: dto.projectId,
         columnId: dto.columnId,
         position: (lastTask?.position ?? 0) + 1000,
+        labels: dto.labels || [],
+        assignments: dto.assignedUserIds?.length ? {
+          create: dto.assignedUserIds.map(userId => ({ userId })),
+        } : undefined,
       },
       include: {
         assignee: { select: { id: true, email: true, name: true } },
         project: { select: { id: true, name: true } },
         column: { select: { id: true, name: true, color: true } },
+        assignments: {
+          include: { user: { select: { id: true, email: true, name: true } } },
+        },
         _count: { select: { comments: true } },
       },
     });
@@ -73,6 +80,9 @@ export class TaskService {
       include: {
         assignee: { select: { id: true, email: true, name: true } },
         column: { select: { id: true, name: true, color: true } },
+        assignments: {
+          include: { user: { select: { id: true, email: true, name: true } } },
+        },
         _count: { select: { comments: true } },
       },
       orderBy: [{ position: 'asc' }],
@@ -95,6 +105,9 @@ export class TaskService {
             author: { select: { id: true, email: true, name: true } },
           },
           orderBy: { createdAt: 'asc' },
+        },
+        assignments: {
+          include: { user: { select: { id: true, email: true, name: true } } },
         },
       },
     });
@@ -121,6 +134,20 @@ export class TaskService {
 
     await this.checkWorkspaceMembership(task.project.workspaceId, userId);
 
+    // Handle task assignments if provided
+    if (dto.assignedUserIds !== undefined) {
+      // Delete all existing assignments and recreate them
+      await this.prisma.taskAssignment.deleteMany({
+        where: { taskId },
+      });
+      
+      if (dto.assignedUserIds.length > 0) {
+        await this.prisma.taskAssignment.createMany({
+          data: dto.assignedUserIds.map(userId => ({ taskId, userId })),
+        });
+      }
+    }
+
     return this.prisma.task.update({
       where: { id: taskId },
       data: {
@@ -132,11 +159,15 @@ export class TaskService {
         assigneeId: dto.assigneeId,
         position: dto.position,
         columnId: dto.columnId,
+        labels: dto.labels,
       },
       include: {
         assignee: { select: { id: true, email: true, name: true } },
         project: { select: { id: true, name: true } },
         column: { select: { id: true, name: true, color: true } },
+        assignments: {
+          include: { user: { select: { id: true, email: true, name: true } } },
+        },
         _count: { select: { comments: true } },
       },
     });
@@ -165,12 +196,20 @@ export class TaskService {
   // Get tasks assigned to the current user across all workspaces
   async findMyTasks(userId: string) {
     return this.prisma.task.findMany({
-      where: { assigneeId: userId },
+      where: {
+        OR: [
+          { assigneeId: userId },
+          { assignments: { some: { userId } } },
+        ],
+      },
       include: {
         project: {
           include: {
             workspace: { select: { id: true, name: true } },
           },
+        },
+        assignments: {
+          include: { user: { select: { id: true, email: true, name: true } } },
         },
       },
       orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }],

@@ -18,11 +18,13 @@ model User {
   assignedTasks   Task[]
   comments        Comment[]
   sentInvitations WorkspaceInvitation[]
+  taskAssignments TaskAssignment[]
 }
 
 model Workspace {
   id        String   @id @default(uuid())
   name      String
+  position  Float    @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -49,6 +51,7 @@ model Project {
   id          String   @id @default(uuid())
   name        String
   description String?
+  position    Float    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -81,6 +84,7 @@ model Task {
   priority    String    @default("medium")  // "low", "medium", "high", "urgent"
   dueDate     DateTime?
   position    Float     @default(0)         // For ordering tasks (using float for easier reordering)
+  labels      String[]  @default([])        // Color labels (hex colors like "#ef4444")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   
@@ -94,6 +98,20 @@ model Task {
   assignee    User?     @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
   
   comments    Comment[]
+  assignments TaskAssignment[]
+}
+
+model TaskAssignment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([taskId, userId])
 }
 
 model Comment {

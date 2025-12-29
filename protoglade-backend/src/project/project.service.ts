@@ -16,11 +16,18 @@ export class ProjectService {
     // Verify user is a member of the workspace
     await this.checkWorkspaceMembership(dto.workspaceId, userId);
 
+    // Get the highest position to add new project at the end
+    const lastProject = await this.prisma.project.findFirst({
+      where: { workspaceId: dto.workspaceId },
+      orderBy: { position: 'desc' },
+    });
+
     const project = await this.prisma.project.create({
       data: {
         name: dto.name,
         description: dto.description,
         workspaceId: dto.workspaceId,
+        position: (lastProject?.position ?? 0) + 1000,
       },
       include: {
         tasks: true,
@@ -40,7 +47,7 @@ export class ProjectService {
       include: {
         _count: { select: { tasks: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { position: 'asc' },
     });
   }
 
@@ -112,6 +119,24 @@ export class ProjectService {
     });
 
     return { message: 'Project deleted successfully' };
+  }
+
+  // Reorder projects in a workspace
+  async reorder(workspaceId: string, userId: string, projectIds: string[]) {
+    await this.checkWorkspaceMembership(workspaceId, userId);
+
+    // Update positions based on the order of projectIds
+    const updates = projectIds.map((id, index) =>
+      this.prisma.project.update({
+        where: { id },
+        data: { position: index * 1000 },
+      }),
+    );
+
+    await this.prisma.$transaction(updates);
+
+    // Return the updated projects
+    return this.findAllInWorkspace(workspaceId, userId);
   }
 
   // Helper: Check if user is a member of the workspace

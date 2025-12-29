@@ -11,9 +11,16 @@ export class WorkspaceService {
 
   // Create a new workspace and add the creator as owner
   async create(userId: string, name: string) {
+    // Get the highest position to add new workspace at the end
+    const lastWorkspace = await this.prisma.workspace.findFirst({
+      where: { members: { some: { userId } } },
+      orderBy: { position: 'desc' },
+    });
+
     const workspace = await this.prisma.workspace.create({
       data: {
         name,
+        position: (lastWorkspace?.position ?? 0) + 1000,
         members: {
           create: {
             userId,
@@ -46,6 +53,7 @@ export class WorkspaceService {
           },
         },
       },
+      orderBy: { workspace: { position: 'asc' } },
     });
 
     // Return workspaces with user's role attached
@@ -179,6 +187,34 @@ export class WorkspaceService {
     });
 
     return { message: 'Workspace deleted successfully' };
+  }
+
+  // Reorder workspaces for a user
+  async reorder(userId: string, workspaceIds: string[]) {
+    // Verify user has access to all workspaces
+    const memberships = await this.prisma.workspaceMember.findMany({
+      where: {
+        userId,
+        workspaceId: { in: workspaceIds },
+      },
+    });
+
+    if (memberships.length !== workspaceIds.length) {
+      throw new ForbiddenException('You do not have access to all workspaces');
+    }
+
+    // Update positions based on the order of workspaceIds
+    const updates = workspaceIds.map((id, index) =>
+      this.prisma.workspace.update({
+        where: { id },
+        data: { position: index * 1000 },
+      }),
+    );
+
+    await this.prisma.$transaction(updates);
+
+    // Return the updated workspaces
+    return this.findAllForUser(userId);
   }
 
   // Helper: Check if user has required role

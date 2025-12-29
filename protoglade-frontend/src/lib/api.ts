@@ -109,6 +109,13 @@ class ApiClient {
     });
   }
 
+  async reorderWorkspaces(workspaceIds: string[]) {
+    return this.request<Array<import('@/types').Workspace>>('/workspaces/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ workspaceIds }),
+    });
+  }
+
   async removeMember(workspaceId: string, userId: string) {
     return this.request<{ message: string }>(`/workspaces/${workspaceId}/members/${userId}`, {
       method: 'DELETE',
@@ -137,6 +144,13 @@ class ApiClient {
     });
   }
 
+  async reorderProjects(workspaceId: string, projectIds: string[]) {
+    return this.request<Array<import('@/types').Project>>(`/projects/workspace/${workspaceId}/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ projectIds }),
+    });
+  }
+
   // Tasks
   async getTasks(projectId: string) {
     return this.request<Array<import('@/types').Task>>(`/tasks?projectId=${projectId}`);
@@ -151,6 +165,8 @@ class ApiClient {
     dueDate?: string;
     assigneeId?: string;
     columnId?: string;
+    labels?: string[];
+    assignedUserIds?: string[];
   }) {
     return this.request<import('@/types').Task>('/tasks', {
       method: 'POST',
@@ -162,7 +178,7 @@ class ApiClient {
     return this.request<import('@/types').Task>(`/tasks/${id}`);
   }
 
-  async updateTask(id: string, data: Partial<import('@/types').Task>) {
+  async updateTask(id: string, data: Partial<import('@/types').Task> & { assignedUserIds?: string[] }) {
     return this.request<import('@/types').Task>(`/tasks/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),

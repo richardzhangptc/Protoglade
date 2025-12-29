@@ -53,4 +53,14 @@ export class ProjectController {
   async delete(@Req() req, @Param('id') id: string) {
     return this.projectService.delete(id, req.user.id);
   }
+
+  // PUT /projects/workspace/:workspaceId/reorder - Reorder projects
+  @Put('workspace/:workspaceId/reorder')
+  async reorder(
+    @Req() req,
+    @Param('workspaceId') workspaceId: string,
+    @Body('projectIds') projectIds: string[],
+  ) {
+    return this.projectService.reorder(workspaceId, req.user.id, projectIds);
+  }
 }

@@ -1,12 +1,33 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Task, KanbanColumn, Comment } from '@/types';
+import { Task, KanbanColumn, Comment, WorkspaceMember } from '@/types';
 import { api } from '@/lib/api';
+
+// Available label colors
+const LABEL_COLORS = [
+  { name: 'Red', color: '#ef4444' },
+  { name: 'Orange', color: '#f97316' },
+  { name: 'Amber', color: '#f59e0b' },
+  { name: 'Yellow', color: '#eab308' },
+  { name: 'Lime', color: '#84cc16' },
+  { name: 'Green', color: '#22c55e' },
+  { name: 'Emerald', color: '#10b981' },
+  { name: 'Teal', color: '#14b8a6' },
+  { name: 'Cyan', color: '#06b6d4' },
+  { name: 'Sky', color: '#0ea5e9' },
+  { name: 'Blue', color: '#3b82f6' },
+  { name: 'Indigo', color: '#6366f1' },
+  { name: 'Violet', color: '#8b5cf6' },
+  { name: 'Purple', color: '#a855f7' },
+  { name: 'Fuchsia', color: '#d946ef' },
+  { name: 'Pink', color: '#ec4899' },
+];
 
 interface TaskDetailModalProps {
   task: Task;
   columns: KanbanColumn[];
+  workspaceMembers?: WorkspaceMember[];
   onClose: () => void;
   onUpdate: (task: Task) => void;
   onDelete: (taskId: string) => void;
@@ -15,6 +36,7 @@ interface TaskDetailModalProps {
 export function TaskDetailModal({
   task,
   columns,
+  workspaceMembers = [],
   onClose,
   onUpdate,
   onDelete,
@@ -28,8 +50,17 @@ export function TaskDetailModal({
   const [isLoadingComments, setIsLoadingComments] = useState(true);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showLabelPicker, setShowLabelPicker] = useState(false);
+  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
+  const labelPickerRef = useRef<HTMLDivElement>(null);
+  const assigneeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Get current labels from task
+  const currentLabels = task.labels || [];
+  const currentAssignments = task.assignments || [];
+  const assignedUserIds = currentAssignments.map(a => a.user.id);
 
   useEffect(() => {
     loadComments();
@@ -47,6 +78,20 @@ export function TaskDetailModal({
       descriptionInputRef.current.focus();
     }
   }, [isEditingDescription]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (labelPickerRef.current && !labelPickerRef.current.contains(event.target as Node)) {
+        setShowLabelPicker(false);
+      }
+      if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(event.target as Node)) {
+        setShowAssigneeDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadComments = async () => {
     try {
@@ -91,6 +136,38 @@ export function TaskDetailModal({
     } catch (error) {
       console.error('Failed to update description:', error);
       setDescription(task.description || '');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleLabel = async (color: string) => {
+    const newLabels = currentLabels.includes(color)
+      ? currentLabels.filter(l => l !== color)
+      : [...currentLabels, color];
+    
+    setIsSaving(true);
+    try {
+      const updated = await api.updateTask(task.id, { labels: newLabels });
+      onUpdate(updated);
+    } catch (error) {
+      console.error('Failed to update labels:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleAssignee = async (userId: string) => {
+    const newAssignedUserIds = assignedUserIds.includes(userId)
+      ? assignedUserIds.filter(id => id !== userId)
+      : [...assignedUserIds, userId];
+    
+    setIsSaving(true);
+    try {
+      const updated = await api.updateTask(task.id, { assignedUserIds: newAssignedUserIds });
+      onUpdate(updated);
+    } catch (error) {
+      console.error('Failed to update assignees:', error);
     } finally {
       setIsSaving(false);
     }
@@ -143,6 +220,22 @@ export function TaskDetailModal({
       hour: 'numeric',
       minute: '2-digit',
     });
+  };
+
+  const getInitials = (name: string | null, email: string) => {
+    if (name) {
+      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    return email[0].toUpperCase();
+  };
+
+  const getUserColor = (userId: string) => {
+    const colors = [
+      '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
+      '#14b8a6', '#0ea5e9', '#3b82f6', '#6366f1', '#a855f7', '#ec4899'
+    ];
+    const hash = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
   };
 
   return (
@@ -202,6 +295,187 @@ export function TaskDetailModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          {/* Labels and Assignees Row */}
+          <div className="flex flex-wrap gap-4">
+            {/* Labels */}
+            <div className="relative" ref={labelPickerRef}>
+              <button
+                onClick={() => setShowLabelPicker(!showLabelPicker)}
+                className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text)] hover:border-[var(--color-primary)] transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                Labels
+                {currentLabels.length > 0 && (
+                  <span className="flex gap-0.5">
+                    {currentLabels.slice(0, 3).map((color, i) => (
+                      <span
+                        key={i}
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                    {currentLabels.length > 3 && (
+                      <span className="text-xs text-[var(--color-text-muted)]">+{currentLabels.length - 3}</span>
+                    )}
+                  </span>
+                )}
+              </button>
+              
+              {showLabelPicker && (
+                <div className="absolute top-full left-0 mt-2 p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl z-10 min-w-[200px]">
+                  <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2">Select labels</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {LABEL_COLORS.map(({ name, color }) => (
+                      <button
+                        key={color}
+                        onClick={() => handleToggleLabel(color)}
+                        title={name}
+                        className={`w-8 h-8 rounded-lg transition-all relative ${
+                          currentLabels.includes(color) 
+                            ? 'ring-2 ring-white ring-offset-2 ring-offset-[var(--color-surface)]' 
+                            : 'hover:scale-110'
+                        }`}
+                        style={{ backgroundColor: color }}
+                        disabled={isSaving}
+                      >
+                        {currentLabels.includes(color) && (
+                          <svg className="w-4 h-4 text-white absolute inset-0 m-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Assignees */}
+            <div className="relative" ref={assigneeDropdownRef}>
+              <button
+                onClick={() => setShowAssigneeDropdown(!showAssigneeDropdown)}
+                className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text)] hover:border-[var(--color-primary)] transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+                Assign
+                {currentAssignments.length > 0 && (
+                  <span className="flex -space-x-1.5">
+                    {currentAssignments.slice(0, 3).map((assignment) => (
+                      <span
+                        key={assignment.user.id}
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white border-2 border-[var(--color-bg)]"
+                        style={{ backgroundColor: getUserColor(assignment.user.id) }}
+                        title={assignment.user.name || assignment.user.email}
+                      >
+                        {getInitials(assignment.user.name, assignment.user.email)}
+                      </span>
+                    ))}
+                    {currentAssignments.length > 3 && (
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-medium bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] border-2 border-[var(--color-bg)]">
+                        +{currentAssignments.length - 3}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </button>
+              
+              {showAssigneeDropdown && (
+                <div className="absolute top-full left-0 mt-2 p-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl z-10 min-w-[220px] max-h-[300px] overflow-y-auto">
+                  <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2 px-2">Workspace members</p>
+                  {workspaceMembers.length === 0 ? (
+                    <p className="text-sm text-[var(--color-text-muted)] px-2 py-1">No members available</p>
+                  ) : (
+                    workspaceMembers.map((member) => (
+                      <button
+                        key={member.user.id}
+                        onClick={() => handleToggleAssignee(member.user.id)}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors ${
+                          assignedUserIds.includes(member.user.id)
+                            ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+                            : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
+                        }`}
+                        disabled={isSaving}
+                      >
+                        <span
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                          style={{ backgroundColor: getUserColor(member.user.id) }}
+                        >
+                          {getInitials(member.user.name, member.user.email)}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {member.user.name || member.user.email.split('@')[0]}
+                          </p>
+                          <p className="text-xs text-[var(--color-text-muted)] truncate">
+                            {member.user.email}
+                          </p>
+                        </div>
+                        {assignedUserIds.includes(member.user.id) && (
+                          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Current Labels Display */}
+          {currentLabels.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {currentLabels.map((color, i) => (
+                <span
+                  key={i}
+                  className="h-2 w-10 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Current Assignees Display */}
+          {currentAssignments.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium mb-2 text-[var(--color-text)]">
+                Assigned to
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {currentAssignments.map((assignment) => (
+                  <div
+                    key={assignment.user.id}
+                    className="flex items-center gap-2 px-2 py-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-full"
+                  >
+                    <span
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                      style={{ backgroundColor: getUserColor(assignment.user.id) }}
+                    >
+                      {getInitials(assignment.user.name, assignment.user.email)}
+                    </span>
+                    <span className="text-sm text-[var(--color-text)]">
+                      {assignment.user.name || assignment.user.email.split('@')[0]}
+                    </span>
+                    <button
+                      onClick={() => handleToggleAssignee(assignment.user.id)}
+                      className="p-0.5 rounded-full hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      disabled={isSaving}
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Description */}
           <div>
             <label className="block text-sm font-medium mb-2 text-[var(--color-text)]">
@@ -337,4 +611,3 @@ export function TaskDetailModal({
     </div>
   );
 }
-

@@ -1,7 +1,26 @@
+import { useState, useEffect, useCallback } from 'react';
 import { Workspace, Project, User } from '@/types';
 import { SidebarView } from './constants';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { UserPopup } from '@/components/UserPopup';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { api } from '@/lib/api';
 
 interface WorkspaceSidebarProps {
   workspace: Workspace | null;
@@ -23,6 +42,56 @@ interface WorkspaceSidebarProps {
   onInviteMember: () => void;
   selectedProjectId: string | null;
   onLogout: () => void;
+  onProjectsReordered: (projects: Project[]) => void;
+  onWorkspacesReordered: (workspaces: Workspace[]) => void;
+}
+
+interface SortableProjectProps {
+  project: Project;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function SortableProject({ project, isSelected, onSelect }: SortableProjectProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: project.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform && { ...transform, x: 0 }), // Lock horizontal movement
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <button
+        onClick={onSelect}
+        {...listeners}
+        {...attributes}
+        className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm w-full text-left transition-colors cursor-grab active:cursor-grabbing ${
+          isSelected
+            ? 'bg-[var(--color-primary)]/10 text-[var(--color-text)]'
+            : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]'
+        }`}
+      >
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span className="truncate flex-1">{project.name}</span>
+        {project._count && project._count.tasks > 0 && (
+          <span className="ml-auto text-xs text-[var(--color-text-muted)]">
+            {project._count.tasks}
+          </span>
+        )}
+      </button>
+    </div>
+  );
 }
 
 export function WorkspaceSidebar({
@@ -45,7 +114,52 @@ export function WorkspaceSidebar({
   onInviteMember,
   selectedProjectId,
   onLogout,
+  onProjectsReordered,
+  onWorkspacesReordered,
 }: WorkspaceSidebarProps) {
+  const [localProjects, setLocalProjects] = useState(projects);
+
+  // Update local projects when props change
+  useEffect(() => {
+    setLocalProjects(projects);
+  }, [projects]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleProjectDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = localProjects.findIndex((p) => p.id === active.id);
+      const newIndex = localProjects.findIndex((p) => p.id === over.id);
+
+      const newProjects = arrayMove(localProjects, oldIndex, newIndex);
+      setLocalProjects(newProjects);
+
+      // Update on server
+      try {
+        const reorderedProjects = await api.reorderProjects(
+          workspaceId,
+          newProjects.map((p) => p.id)
+        );
+        onProjectsReordered(reorderedProjects);
+      } catch (error) {
+        console.error('Failed to reorder projects:', error);
+        // Revert on error
+        setLocalProjects(projects);
+      }
+    }
+  }, [localProjects, workspaceId, projects, onProjectsReordered]);
+
   return (
     <>
       {/* Collapsed Sidebar Toggle - Only show when no project is selected */}
@@ -75,6 +189,7 @@ export function WorkspaceSidebar({
           onClose={onCloseWorkspaceSwitcher}
           onCreateWorkspace={onCreateWorkspace}
           onCollapse={onCollapse}
+          onWorkspacesReordered={onWorkspacesReordered}
         />
 
         {/* Navigation */}
@@ -96,30 +211,28 @@ export function WorkspaceSidebar({
               </button>
             </div>
             <div className="space-y-1">
-              {projects.length === 0 ? (
+              {localProjects.length === 0 ? (
                 <p className="text-xs text-[var(--color-text-muted)] px-2 py-1">No projects yet</p>
               ) : (
-                projects.map((project) => (
-                  <button
-                    key={project.id}
-                    onClick={() => onSelectProject(project.id)}
-                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm w-full text-left transition-colors group ${
-                      selectedProjectId === project.id
-                        ? 'bg-[var(--color-primary)]/10 text-[var(--color-text)]'
-                        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]'
-                    }`}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleProjectDragEnd}
+                >
+                  <SortableContext
+                    items={localProjects.map((p) => p.id)}
+                    strategy={verticalListSortingStrategy}
                   >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span className="truncate">{project.name}</span>
-                    {project._count && project._count.tasks > 0 && (
-                      <span className="ml-auto text-xs text-[var(--color-text-muted)]">
-                        {project._count.tasks}
-                      </span>
-                    )}
-                  </button>
-                ))
+                    {localProjects.map((project) => (
+                      <SortableProject
+                        key={project.id}
+                        project={project}
+                        isSelected={selectedProjectId === project.id}
+                        onSelect={() => onSelectProject(project.id)}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
           </div>
@@ -192,4 +305,3 @@ export function WorkspaceSidebar({
     </>
   );
 }
-

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -77,5 +78,11 @@ export class WorkspaceController {
     @Param('userId') userId: string,
   ) {
     return this.workspaceService.removeMember(id, req.user.id, userId);
+  }
+
+  // PUT /workspaces/reorder - Reorder workspaces for the current user
+  @Put('reorder')
+  async reorder(@Req() req, @Body('workspaceIds') workspaceIds: string[]) {
+    return this.workspaceService.reorder(req.user.id, workspaceIds);
   }
 }

@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Project" ADD COLUMN     "position" DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+-- AlterTable
+ALTER TABLE "Workspace" ADD COLUMN     "position" DOUBLE PRECISION NOT NULL DEFAULT 0;

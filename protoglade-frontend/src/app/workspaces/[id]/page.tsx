@@ -491,6 +491,8 @@ export default function WorkspacePage() {
           logout();
           router.push('/auth/login');
         }}
+        onProjectsReordered={(reorderedProjects) => setProjects(reorderedProjects)}
+        onWorkspacesReordered={(reorderedWorkspaces) => setAllWorkspaces(reorderedWorkspaces)}
       />
 
       {/* Main Content */}
@@ -635,6 +637,7 @@ export default function WorkspacePage() {
         <TaskDetailModal
           task={selectedTask}
           columns={columns}
+          workspaceMembers={workspace?.members || []}
           onClose={() => setSelectedTask(null)}
           onUpdate={(task) => {
             setTasks(tasks.map((t) => (t.id === task.id ? task : t)));

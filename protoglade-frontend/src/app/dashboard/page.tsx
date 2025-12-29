@@ -1,11 +1,81 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Workspace } from '@/types';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+interface SortableWorkspaceCardProps {
+  workspace: Workspace;
+  onNavigate: () => void;
+}
+
+function SortableWorkspaceCard({ workspace, onNavigate }: SortableWorkspaceCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: workspace.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform && { ...transform, x: 0 }), // Lock horizontal movement
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div
+        onClick={onNavigate}
+        {...listeners}
+        {...attributes}
+        className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors group cursor-grab active:cursor-grabbing"
+      >
+        <div className="w-8 h-8 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center text-sm font-medium text-[var(--color-text)]">
+          {workspace.name.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-[var(--color-text)] truncate group-hover:text-[var(--color-text)]">
+            {workspace.name}
+          </p>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            {workspace.members.length} member{workspace.members.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <svg 
+          className="w-4 h-4 text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading, logout } = useAuth();
@@ -55,6 +125,41 @@ export default function DashboardPage() {
       setIsCreating(false);
     }
   };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleWorkspaceDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = workspaces.findIndex((w) => w.id === active.id);
+      const newIndex = workspaces.findIndex((w) => w.id === over.id);
+
+      const newWorkspaces = arrayMove(workspaces, oldIndex, newIndex);
+      setWorkspaces(newWorkspaces);
+
+      // Update on server
+      try {
+        const reorderedWorkspaces = await api.reorderWorkspaces(
+          newWorkspaces.map((w) => w.id)
+        );
+        setWorkspaces(reorderedWorkspaces);
+      } catch (error) {
+        console.error('Failed to reorder workspaces:', error);
+        // Revert on error
+        await loadWorkspaces();
+      }
+    }
+  }, [workspaces]);
 
   if (authLoading || !user) {
     return (
@@ -108,33 +213,24 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-2 mb-6">
-              {workspaces.map((workspace) => (
-                <Link
-                  key={workspace.id}
-                  href={`/workspaces/${workspace.id}`}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors group"
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleWorkspaceDragEnd}
+              >
+                <SortableContext
+                  items={workspaces.map((w) => w.id)}
+                  strategy={verticalListSortingStrategy}
                 >
-                  <div className="w-8 h-8 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center text-sm font-medium text-[var(--color-text)]">
-                    {workspace.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-[var(--color-text)] truncate group-hover:text-[var(--color-text)]">
-                      {workspace.name}
-                    </p>
-                    <p className="text-xs text-[var(--color-text-muted)]">
-                      {workspace.members.length} member{workspace.members.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <svg 
-                    className="w-4 h-4 text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Link>
-              ))}
+                  {workspaces.map((workspace) => (
+                    <SortableWorkspaceCard
+                      key={workspace.id}
+                      workspace={workspace}
+                      onNavigate={() => router.push(`/workspaces/${workspace.id}`)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
             </div>
           )}
 

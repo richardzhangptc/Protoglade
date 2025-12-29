@@ -7,5 +7,7 @@ export class CreateTaskDto {
   assigneeId?: string;
   projectId: string;
   columnId?: string;    // Kanban column ID
+  labels?: string[];    // Color labels (hex colors)
+  assignedUserIds?: string[];  // Array of user IDs for multiple assignees
 }
 
