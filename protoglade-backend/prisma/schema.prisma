@@ -51,15 +51,17 @@ model Project {
   id          String   @id @default(uuid())
   name        String
   description String?
+  type        String   @default("kanban")  // "kanban" or "whiteboard"
   position    Float    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
+
   tasks       Task[]
   columns     KanbanColumn[]
+  strokes     WhiteboardStroke[]
 }
 
 model KanbanColumn {
@@ -135,12 +137,26 @@ model WorkspaceInvitation {
   status    String   @default("pending") // "pending", "accepted", "expired"
   expiresAt DateTime
   createdAt DateTime @default(now())
-  
+
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
+
   invitedById String
   invitedBy   User      @relation(fields: [invitedById], references: [id], onDelete: Cascade)
-  
+
   @@unique([email, workspaceId])  // Only one pending invite per email per workspace
+}
+
+model WhiteboardStroke {
+  id        String   @id @default(uuid())
+  points    Json     // Array of {x, y} points
+  color     String   @default("#000000")
+  size      Float    @default(2)
+  createdAt DateTime @default(now())
+  createdBy String   // User ID who created the stroke
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }

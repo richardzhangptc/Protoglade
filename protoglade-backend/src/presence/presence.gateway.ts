@@ -489,5 +489,134 @@ export class PresenceGateway
       odataId: client.user.id,
     });
   }
+
+  // ===== Whiteboard Stroke Events =====
+
+  @SubscribeMessage('stroke:start')
+  handleStrokeStart(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      strokeId: string;
+      color: string;
+      size: number;
+      point: { x: number; y: number };
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, ...strokeData } = data;
+
+    console.log(
+      `Stroke started by ${client.user.email} in project ${projectId}`,
+    );
+
+    // Broadcast to all OTHER users in the project
+    client.to(`project:${projectId}`).emit('stroke:start', {
+      projectId,
+      ...strokeData,
+      userId: client.user.id,
+    });
+  }
+
+  @SubscribeMessage('stroke:point')
+  handleStrokePoint(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      strokeId: string;
+      point: { x: number; y: number };
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, strokeId, point } = data;
+
+    // Broadcast point to other users
+    client.to(`project:${projectId}`).emit('stroke:point', {
+      projectId,
+      strokeId,
+      point,
+      userId: client.user.id,
+    });
+  }
+
+  @SubscribeMessage('stroke:end')
+  handleStrokeEnd(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      strokeId: string;
+      points: Array<{ x: number; y: number }>;
+      color: string;
+      size: number;
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, ...strokeData } = data;
+
+    console.log(
+      `Stroke ended by ${client.user.email} in project ${projectId}`,
+    );
+
+    // Broadcast completed stroke to other users
+    client.to(`project:${projectId}`).emit('stroke:end', {
+      projectId,
+      ...strokeData,
+      userId: client.user.id,
+    });
+  }
+
+  @SubscribeMessage('stroke:undo')
+  handleStrokeUndo(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+      strokeId: string;
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId, strokeId } = data;
+
+    console.log(
+      `Stroke undone by ${client.user.email} in project ${projectId}: ${strokeId}`,
+    );
+
+    // Broadcast undo to other users
+    client.to(`project:${projectId}`).emit('stroke:undo', {
+      projectId,
+      strokeId,
+      userId: client.user.id,
+    });
+  }
+
+  @SubscribeMessage('canvas:clear')
+  handleCanvasClear(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      projectId: string;
+    },
+  ): void {
+    if (!client.user) return;
+
+    const { projectId } = data;
+
+    console.log(
+      `Canvas cleared by ${client.user.email} in project ${projectId}`,
+    );
+
+    // Broadcast clear to other users
+    client.to(`project:${projectId}`).emit('canvas:clear', {
+      projectId,
+      userId: client.user.id,
+    });
+  }
 }
 

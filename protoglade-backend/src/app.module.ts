@@ -11,6 +11,7 @@ import { InvitationModule } from './invitation/invitation.module';
 import { UnsubscribeModule } from './unsubscribe/unsubscribe.module';
 import { PresenceModule } from './presence/presence.module';
 import { ColumnModule } from './column/column.module';
+import { WhiteboardModule } from './whiteboard/whiteboard.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ColumnModule } from './column/column.module';
     UnsubscribeModule,
     PresenceModule,
     ColumnModule,
+    WhiteboardModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

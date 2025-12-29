@@ -29,6 +29,7 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
+  type: 'kanban' | 'whiteboard';
   position: number;
   createdAt: string;
   updatedAt: string;
@@ -98,5 +99,21 @@ export interface Invitation {
   createdAt: string;
   workspace: { id: string; name: string };
   invitedBy: { id: string; name: string | null; email: string };
+}
+
+// Whiteboard types
+export interface WhiteboardPoint {
+  x: number;
+  y: number;
+}
+
+export interface WhiteboardStroke {
+  id: string;
+  points: WhiteboardPoint[];
+  color: string;
+  size: number;
+  createdAt: string;
+  createdBy: string;
+  projectId: string;
 }
 

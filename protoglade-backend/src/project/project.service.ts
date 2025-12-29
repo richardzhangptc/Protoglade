@@ -26,6 +26,7 @@ export class ProjectService {
       data: {
         name: dto.name,
         description: dto.description,
+        type: dto.type || 'kanban',
         workspaceId: dto.workspaceId,
         position: (lastProject?.position ?? 0) + 1000,
       },

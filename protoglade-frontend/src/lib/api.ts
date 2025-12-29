@@ -127,10 +127,10 @@ class ApiClient {
     return this.request<Array<import('@/types').Project>>(`/projects?workspaceId=${workspaceId}`);
   }
 
-  async createProject(name: string, workspaceId: string, description?: string) {
+  async createProject(name: string, workspaceId: string, description?: string, type?: 'kanban' | 'whiteboard') {
     return this.request<import('@/types').Project>('/projects', {
       method: 'POST',
-      body: JSON.stringify({ name, workspaceId, description }),
+      body: JSON.stringify({ name, workspaceId, description, type: type || 'kanban' }),
     });
   }
 
@@ -285,6 +285,34 @@ class ApiClient {
     return this.request<{ email: string; message: string }>('/unsubscribe/resubscribe', {
       method: 'POST',
       body: JSON.stringify({ token }),
+    });
+  }
+
+  // Whiteboard
+  async getWhiteboardStrokes(projectId: string) {
+    return this.request<Array<import('@/types').WhiteboardStroke>>(`/whiteboard/${projectId}/strokes`);
+  }
+
+  async createWhiteboardStroke(projectId: string, data: {
+    points: Array<{ x: number; y: number }>;
+    color: string;
+    size: number;
+  }) {
+    return this.request<import('@/types').WhiteboardStroke>(`/whiteboard/${projectId}/strokes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteWhiteboardStroke(strokeId: string) {
+    return this.request<{ message: string }>(`/whiteboard/strokes/${strokeId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async clearWhiteboardCanvas(projectId: string) {
+    return this.request<{ message: string }>(`/whiteboard/${projectId}/clear`, {
+      method: 'DELETE',
     });
   }
 }

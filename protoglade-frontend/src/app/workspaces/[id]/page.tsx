@@ -4,19 +4,26 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
-import { Workspace, Project, Invitation, Task, KanbanColumn } from '@/types';
-import { 
-  usePresence, 
-  TaskSyncEvent, 
-  TaskDeleteEvent, 
-  ColumnSyncEvent, 
-  ColumnDeleteEvent, 
-  ColumnsReorderedEvent 
+import { Workspace, Project, Invitation, Task, KanbanColumn, WhiteboardStroke, WhiteboardPoint } from '@/types';
+import {
+  usePresence,
+  TaskSyncEvent,
+  TaskDeleteEvent,
+  ColumnSyncEvent,
+  ColumnDeleteEvent,
+  ColumnsReorderedEvent,
+  StrokeStartEvent,
+  StrokePointEvent,
+  StrokeEndEvent,
+  StrokeUndoEvent,
+  CanvasClearEvent,
 } from '@/hooks/usePresence';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { ProjectHeader } from './components/ProjectHeader';
+import { WhiteboardHeader } from './components/WhiteboardHeader';
 import { EmptyState } from './components/EmptyState';
 import { KanbanBoard } from './components/KanbanBoard';
+import { Whiteboard } from './components/Whiteboard';
 import { CreateProjectModal } from './components/modals/CreateProjectModal';
 import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
@@ -51,6 +58,7 @@ export default function WorkspacePage() {
   const [isRemoving, setIsRemoving] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [newProjectType, setNewProjectType] = useState<'kanban' | 'whiteboard'>('kanban');
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
@@ -78,6 +86,10 @@ export default function WorkspacePage() {
   const [isCreatingColumn, setIsCreatingColumn] = useState(false);
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnName, setEditingColumnName] = useState('');
+
+  // Whiteboard state
+  const [strokes, setStrokes] = useState<WhiteboardStroke[]>([]);
+  const [remoteStrokes, setRemoteStrokes] = useState<Map<string, { id: string; points: WhiteboardPoint[]; color: string; size: number; userId: string }>>(new Map());
 
   // Refs
   const lastCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -130,6 +142,65 @@ export default function WorkspacePage() {
     setColumns(event.columns.sort((a, b) => a.position - b.position));
   }, []);
 
+  // Whiteboard stroke sync handlers
+  const handleRemoteStrokeStart = useCallback((event: StrokeStartEvent) => {
+    setRemoteStrokes((prev) => {
+      const next = new Map(prev);
+      next.set(event.strokeId, {
+        id: event.strokeId,
+        points: [event.point],
+        color: event.color,
+        size: event.size,
+        userId: event.userId,
+      });
+      return next;
+    });
+  }, []);
+
+  const handleRemoteStrokePoint = useCallback((event: StrokePointEvent) => {
+    setRemoteStrokes((prev) => {
+      const stroke = prev.get(event.strokeId);
+      if (!stroke) return prev;
+      const next = new Map(prev);
+      next.set(event.strokeId, {
+        ...stroke,
+        points: [...stroke.points, event.point],
+      });
+      return next;
+    });
+  }, []);
+
+  const handleRemoteStrokeEnd = useCallback((event: StrokeEndEvent) => {
+    // Remove from remote strokes
+    setRemoteStrokes((prev) => {
+      const next = new Map(prev);
+      next.delete(event.strokeId);
+      return next;
+    });
+    // Add to saved strokes
+    setStrokes((prev) => [
+      ...prev,
+      {
+        id: event.strokeId,
+        points: event.points,
+        color: event.color,
+        size: event.size,
+        createdAt: new Date().toISOString(),
+        createdBy: event.userId,
+        projectId: event.projectId,
+      },
+    ]);
+  }, []);
+
+  const handleRemoteStrokeUndo = useCallback((event: StrokeUndoEvent) => {
+    setStrokes((prev) => prev.filter((s) => s.id !== event.strokeId));
+  }, []);
+
+  const handleRemoteCanvasClear = useCallback((_event: CanvasClearEvent) => {
+    setStrokes([]);
+    setRemoteStrokes(new Map());
+  }, []);
+
   // Real-time presence and task sync
   const {
     onlineUsers,
@@ -143,6 +214,11 @@ export default function WorkspacePage() {
     emitColumnsReordered,
     emitCursorMove,
     emitCursorLeave,
+    emitStrokeStart,
+    emitStrokePoint,
+    emitStrokeEnd,
+    emitStrokeUndo,
+    emitCanvasClear,
   } = usePresence(selectedProjectId, {
     onTaskCreated: handleRemoteTaskCreated,
     onTaskUpdated: handleRemoteTaskUpdated,
@@ -151,6 +227,11 @@ export default function WorkspacePage() {
     onColumnUpdated: handleRemoteColumnUpdated,
     onColumnDeleted: handleRemoteColumnDeleted,
     onColumnsReordered: handleRemoteColumnsReordered,
+    onStrokeStart: handleRemoteStrokeStart,
+    onStrokePoint: handleRemoteStrokePoint,
+    onStrokeEnd: handleRemoteStrokeEnd,
+    onStrokeUndo: handleRemoteStrokeUndo,
+    onCanvasClear: handleRemoteCanvasClear,
   });
 
   useEffect(() => {
@@ -212,14 +293,27 @@ export default function WorkspacePage() {
   const loadProjectData = async (projectId: string) => {
     setIsLoadingProject(true);
     try {
-      const [projectData, tasksData, columnsData] = await Promise.all([
-        api.getProject(projectId),
-        api.getTasks(projectId),
-        api.getColumns(projectId),
-      ]);
+      const projectData = await api.getProject(projectId);
       setSelectedProject(projectData);
-      setTasks(tasksData);
-      setColumns(columnsData.sort((a, b) => a.position - b.position));
+
+      if (projectData.type === 'whiteboard') {
+        // Load whiteboard strokes
+        const strokesData = await api.getWhiteboardStrokes(projectId);
+        setStrokes(strokesData);
+        setTasks([]);
+        setColumns([]);
+        setRemoteStrokes(new Map());
+      } else {
+        // Load kanban data
+        const [tasksData, columnsData] = await Promise.all([
+          api.getTasks(projectId),
+          api.getColumns(projectId),
+        ]);
+        setTasks(tasksData);
+        setColumns(columnsData.sort((a, b) => a.position - b.position));
+        setStrokes([]);
+        setRemoteStrokes(new Map());
+      }
     } catch (error) {
       console.error('Failed to load project:', error);
       setSelectedProjectId(null);
@@ -237,11 +331,13 @@ export default function WorkspacePage() {
       const project = await api.createProject(
         newProjectName,
         workspaceId,
-        newProjectDescription || undefined
+        newProjectDescription || undefined,
+        newProjectType
       );
       setProjects([...projects, project]);
       setNewProjectName('');
       setNewProjectDescription('');
+      setNewProjectType('kanban');
       setShowCreateProjectModal(false);
       // Auto-select the new project
       setSelectedProjectId(project.id);
@@ -427,6 +523,73 @@ export default function WorkspacePage() {
     }
   };
 
+  // Whiteboard handlers
+  const handleStrokeStart = useCallback((strokeId: string, point: WhiteboardPoint, color: string, size: number) => {
+    emitStrokeStart(strokeId, point, color, size);
+  }, [emitStrokeStart]);
+
+  const handleStrokePoint = useCallback((strokeId: string, point: WhiteboardPoint) => {
+    emitStrokePoint(strokeId, point);
+  }, [emitStrokePoint]);
+
+  const handleStrokeEnd = useCallback(async (strokeId: string, points: WhiteboardPoint[], color: string, size: number) => {
+    if (!selectedProjectId) return;
+
+    // Add stroke to local state immediately
+    const newStroke: WhiteboardStroke = {
+      id: strokeId,
+      points,
+      color,
+      size,
+      createdAt: new Date().toISOString(),
+      createdBy: user?.id || '',
+      projectId: selectedProjectId,
+    };
+    setStrokes((prev) => [...prev, newStroke]);
+
+    // Emit to other users
+    emitStrokeEnd(strokeId, points, color, size);
+
+    // Save to database
+    try {
+      await api.createWhiteboardStroke(selectedProjectId, { points, color, size });
+    } catch (error) {
+      console.error('Failed to save stroke:', error);
+    }
+  }, [selectedProjectId, user?.id, emitStrokeEnd]);
+
+  const handleWhiteboardUndo = useCallback(async () => {
+    if (!selectedProjectId || strokes.length === 0) return;
+
+    const lastStroke = strokes[strokes.length - 1];
+    setStrokes((prev) => prev.slice(0, -1));
+    emitStrokeUndo(lastStroke.id);
+
+    try {
+      await api.deleteWhiteboardStroke(lastStroke.id);
+    } catch (error) {
+      console.error('Failed to undo stroke:', error);
+    }
+  }, [selectedProjectId, strokes, emitStrokeUndo]);
+
+  const handleWhiteboardClear = useCallback(async () => {
+    if (!selectedProjectId) return;
+
+    setStrokes([]);
+    setRemoteStrokes(new Map());
+    emitCanvasClear();
+
+    try {
+      await api.clearWhiteboardCanvas(selectedProjectId);
+    } catch (error) {
+      console.error('Failed to clear canvas:', error);
+    }
+  }, [selectedProjectId, emitCanvasClear]);
+
+  const handleWhiteboardCursorMove = useCallback((x: number, y: number) => {
+    emitCursorMove({ x, y, isDragging: false, dragTaskId: null, dragTaskTitle: null });
+  }, [emitCursorMove]);
+
   // Group tasks by column
   const tasksByColumn = useMemo(() => {
     const grouped: Record<string, Task[]> = {};
@@ -499,55 +662,86 @@ export default function WorkspacePage() {
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {selectedProjectId && selectedProject ? (
           <>
-            <ProjectHeader
-              project={selectedProject}
-              sidebarCollapsed={sidebarCollapsed}
-              onExpandSidebar={() => setSidebarCollapsed(false)}
-              onCreateColumn={() => setShowCreateColumnModal(true)}
-              onlineUsers={onlineUsers}
-              currentUserId={user?.id}
-            />
-
-            {/* Kanban Board - scrollable area */}
-            {isLoadingProject ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-text-muted)] border-t-transparent" />
-              </div>
+            {selectedProject.type === 'whiteboard' ? (
+              <>
+                <WhiteboardHeader
+                  project={selectedProject}
+                  sidebarCollapsed={sidebarCollapsed}
+                  onExpandSidebar={() => setSidebarCollapsed(false)}
+                  onlineUsers={onlineUsers}
+                  currentUserId={user?.id}
+                />
+                {isLoadingProject ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-text-muted)] border-t-transparent" />
+                  </div>
+                ) : (
+                  <Whiteboard
+                    projectId={selectedProjectId}
+                    strokes={strokes}
+                    remoteStrokes={remoteStrokes}
+                    remoteCursors={remoteCursors}
+                    onStrokeStart={handleStrokeStart}
+                    onStrokePoint={handleStrokePoint}
+                    onStrokeEnd={handleStrokeEnd}
+                    onUndo={handleWhiteboardUndo}
+                    onClear={handleWhiteboardClear}
+                    onCursorMove={handleWhiteboardCursorMove}
+                    onCursorLeave={emitCursorLeave}
+                  />
+                )}
+              </>
             ) : (
-              <KanbanBoard
-                columns={columns}
-                tasks={tasks}
-                tasksByColumn={tasksByColumn}
-                selectedProjectId={selectedProjectId}
-                remoteCursors={remoteCursors}
-                activeTask={activeTask}
-                activeColumn={activeColumn}
-                editingColumnId={editingColumnId}
-                editingColumnName={editingColumnName}
-                onTaskClick={setSelectedTask}
-                onAddTask={(columnId) => {
-                  setCreateTaskColumnId(columnId);
-                  setShowCreateTaskModal(true);
-                }}
-                onEditColumn={(columnId, name) => {
-                  setEditingColumnId(columnId);
-                  setEditingColumnName(name);
-                }}
-                onDeleteColumn={handleDeleteColumn}
-                onEditingNameChange={setEditingColumnName}
-                onSaveColumnName={handleUpdateColumnName}
-                onCancelEdit={() => setEditingColumnId(null)}
-                onTaskUpdated={handleTaskUpdated}
-                onColumnsReordered={handleColumnsReordered}
-                onLoadProjectData={loadProjectData}
-                onCursorMove={emitCursorMove}
-                onCursorLeave={emitCursorLeave}
-                setActiveTask={setActiveTask}
-                setActiveColumn={setActiveColumn}
-                setColumns={setColumns}
-                setTasks={setTasks}
-                lastCursorPosRef={lastCursorPosRef}
-              />
+              <>
+                <ProjectHeader
+                  project={selectedProject}
+                  sidebarCollapsed={sidebarCollapsed}
+                  onExpandSidebar={() => setSidebarCollapsed(false)}
+                  onCreateColumn={() => setShowCreateColumnModal(true)}
+                  onlineUsers={onlineUsers}
+                  currentUserId={user?.id}
+                />
+                {isLoadingProject ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-text-muted)] border-t-transparent" />
+                  </div>
+                ) : (
+                  <KanbanBoard
+                    columns={columns}
+                    tasks={tasks}
+                    tasksByColumn={tasksByColumn}
+                    selectedProjectId={selectedProjectId}
+                    remoteCursors={remoteCursors}
+                    activeTask={activeTask}
+                    activeColumn={activeColumn}
+                    editingColumnId={editingColumnId}
+                    editingColumnName={editingColumnName}
+                    onTaskClick={setSelectedTask}
+                    onAddTask={(columnId) => {
+                      setCreateTaskColumnId(columnId);
+                      setShowCreateTaskModal(true);
+                    }}
+                    onEditColumn={(columnId, name) => {
+                      setEditingColumnId(columnId);
+                      setEditingColumnName(name);
+                    }}
+                    onDeleteColumn={handleDeleteColumn}
+                    onEditingNameChange={setEditingColumnName}
+                    onSaveColumnName={handleUpdateColumnName}
+                    onCancelEdit={() => setEditingColumnId(null)}
+                    onTaskUpdated={handleTaskUpdated}
+                    onColumnsReordered={handleColumnsReordered}
+                    onLoadProjectData={loadProjectData}
+                    onCursorMove={emitCursorMove}
+                    onCursorLeave={emitCursorLeave}
+                    setActiveTask={setActiveTask}
+                    setActiveColumn={setActiveColumn}
+                    setColumns={setColumns}
+                    setTasks={setTasks}
+                    lastCursorPosRef={lastCursorPosRef}
+                  />
+                )}
+              </>
             )}
           </>
         ) : (
@@ -560,10 +754,15 @@ export default function WorkspacePage() {
         isOpen={showCreateProjectModal}
         name={newProjectName}
         description={newProjectDescription}
+        type={newProjectType}
         isCreating={isCreatingProject}
-        onClose={() => setShowCreateProjectModal(false)}
+        onClose={() => {
+          setShowCreateProjectModal(false);
+          setNewProjectType('kanban');
+        }}
         onNameChange={setNewProjectName}
         onDescriptionChange={setNewProjectDescription}
+        onTypeChange={setNewProjectType}
         onSubmit={handleCreateProject}
       />
 

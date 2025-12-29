@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import throttle from 'lodash.throttle';
 import { api } from '@/lib/api';
-import { Task, KanbanColumn } from '@/types';
+import { Task, KanbanColumn, WhiteboardPoint } from '@/types';
 
 export interface OnlineUser {
   id: string;
@@ -45,6 +45,43 @@ export interface ColumnsReorderedEvent {
   reorderedBy?: OnlineUser;
 }
 
+// Whiteboard stroke events
+export interface StrokeStartEvent {
+  projectId: string;
+  strokeId: string;
+  userId: string;
+  point: WhiteboardPoint;
+  color: string;
+  size: number;
+}
+
+export interface StrokePointEvent {
+  projectId: string;
+  strokeId: string;
+  userId: string;
+  point: WhiteboardPoint;
+}
+
+export interface StrokeEndEvent {
+  projectId: string;
+  strokeId: string;
+  userId: string;
+  points: WhiteboardPoint[];
+  color: string;
+  size: number;
+}
+
+export interface StrokeUndoEvent {
+  projectId: string;
+  strokeId: string;
+  userId: string;
+}
+
+export interface CanvasClearEvent {
+  projectId: string;
+  userId: string;
+}
+
 export interface RemoteCursor {
   odataId: string;
   user: OnlineUser;
@@ -82,6 +119,12 @@ interface UsePresenceOptions {
   onColumnUpdated?: (event: ColumnSyncEvent) => void;
   onColumnDeleted?: (event: ColumnDeleteEvent) => void;
   onColumnsReordered?: (event: ColumnsReorderedEvent) => void;
+  // Whiteboard events
+  onStrokeStart?: (event: StrokeStartEvent) => void;
+  onStrokePoint?: (event: StrokePointEvent) => void;
+  onStrokeEnd?: (event: StrokeEndEvent) => void;
+  onStrokeUndo?: (event: StrokeUndoEvent) => void;
+  onCanvasClear?: (event: CanvasClearEvent) => void;
 }
 
 export function usePresence(projectId: string | null, options?: UsePresenceOptions) {
@@ -209,6 +252,37 @@ export function usePresence(projectId: string | null, options?: UsePresenceOptio
         next.delete(event.odataId);
         return next;
       });
+    });
+
+    // Whiteboard stroke events
+    socket.on('stroke:start', (event: StrokeStartEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        optionsRef.current?.onStrokeStart?.(event);
+      }
+    });
+
+    socket.on('stroke:point', (event: StrokePointEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        optionsRef.current?.onStrokePoint?.(event);
+      }
+    });
+
+    socket.on('stroke:end', (event: StrokeEndEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        optionsRef.current?.onStrokeEnd?.(event);
+      }
+    });
+
+    socket.on('stroke:undo', (event: StrokeUndoEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        optionsRef.current?.onStrokeUndo?.(event);
+      }
+    });
+
+    socket.on('canvas:clear', (event: CanvasClearEvent) => {
+      if (event.projectId === currentProjectIdRef.current) {
+        optionsRef.current?.onCanvasClear?.(event);
+      }
     });
 
     return socket;
@@ -404,6 +478,58 @@ export function usePresence(projectId: string | null, options?: UsePresenceOptio
     }
   }, []);
 
+  // Methods to emit whiteboard stroke events
+  const emitStrokeStart = useCallback((strokeId: string, point: WhiteboardPoint, color: string, size: number) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('stroke:start', {
+        projectId: currentProjectIdRef.current,
+        strokeId,
+        point,
+        color,
+        size,
+      });
+    }
+  }, []);
+
+  const emitStrokePoint = useCallback((strokeId: string, point: WhiteboardPoint) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('stroke:point', {
+        projectId: currentProjectIdRef.current,
+        strokeId,
+        point,
+      });
+    }
+  }, []);
+
+  const emitStrokeEnd = useCallback((strokeId: string, points: WhiteboardPoint[], color: string, size: number) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('stroke:end', {
+        projectId: currentProjectIdRef.current,
+        strokeId,
+        points,
+        color,
+        size,
+      });
+    }
+  }, []);
+
+  const emitStrokeUndo = useCallback((strokeId: string) => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('stroke:undo', {
+        projectId: currentProjectIdRef.current,
+        strokeId,
+      });
+    }
+  }, []);
+
+  const emitCanvasClear = useCallback(() => {
+    if (socketRef.current?.connected && currentProjectIdRef.current) {
+      socketRef.current.emit('canvas:clear', {
+        projectId: currentProjectIdRef.current,
+      });
+    }
+  }, []);
+
   // Convert Map to array for easier consumption
   const remoteCursorsArray = useMemo(
     () => Array.from(remoteCursors.values()),
@@ -423,5 +549,11 @@ export function usePresence(projectId: string | null, options?: UsePresenceOptio
     emitColumnsReordered,
     emitCursorMove,
     emitCursorLeave,
+    // Whiteboard stroke emitters
+    emitStrokeStart,
+    emitStrokePoint,
+    emitStrokeEnd,
+    emitStrokeUndo,
+    emitCanvasClear,
   };
 }
