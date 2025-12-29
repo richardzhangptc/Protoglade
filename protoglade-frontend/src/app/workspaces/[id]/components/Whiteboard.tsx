@@ -84,6 +84,49 @@ export function Whiteboard({
     return () => window.removeEventListener('resize', resizeCanvas);
   }, []);
 
+  // Native wheel event listener with passive: false to allow preventDefault
+  // This is necessary to prevent browser zoom on pinch gestures
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleNativeWheel = (e: WheelEvent) => {
+      e.preventDefault();
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Pinch-to-zoom on trackpad (ctrlKey is true for pinch gestures)
+      if (e.ctrlKey) {
+        const zoomSensitivity = 0.01;
+        const delta = 1 - e.deltaY * zoomSensitivity;
+
+        setZoom((prevZoom) => {
+          const newZoom = Math.min(Math.max(prevZoom * delta, 0.1), 5);
+          const zoomRatio = newZoom / prevZoom;
+
+          setPan((prevPan) => ({
+            x: mouseX - (mouseX - prevPan.x) * zoomRatio,
+            y: mouseY - (mouseY - prevPan.y) * zoomRatio,
+          }));
+
+          return newZoom;
+        });
+      } else {
+        // Two-finger scroll on trackpad for panning
+        setPan((prev) => ({
+          x: prev.x - e.deltaX,
+          y: prev.y - e.deltaY,
+        }));
+      }
+    };
+
+    // Use passive: false to allow preventDefault() which blocks browser zoom
+    canvas.addEventListener('wheel', handleNativeWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleNativeWheel);
+  }, []);
+
   // Draw all strokes
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -279,27 +322,6 @@ export function Whiteboard({
     onCursorLeave();
   }, [onCursorLeave]);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.min(Math.max(zoom * delta, 0.1), 5);
-
-    // Zoom towards mouse position
-    const zoomRatio = newZoom / zoom;
-    setPan((prev) => ({
-      x: mouseX - (mouseX - prev.x) * zoomRatio,
-      y: mouseY - (mouseY - prev.y) * zoomRatio,
-    }));
-    setZoom(newZoom);
-  }, [zoom]);
-
   const resetView = useCallback(() => {
     setPan({ x: 0, y: 0 });
     setZoom(1);
@@ -402,12 +424,11 @@ export function Whiteboard({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerLeave}
-          onWheel={handleWheel}
         />
 
         {/* Help text */}
         <div className="absolute bottom-4 right-4 text-xs text-gray-400 pointer-events-none">
-          Alt+drag to pan • Scroll to zoom
+          Two-finger scroll to pan • Pinch to zoom • Alt+drag to pan
         </div>
       </div>
     </div>
