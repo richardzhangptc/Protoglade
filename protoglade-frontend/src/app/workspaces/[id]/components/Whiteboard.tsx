@@ -67,7 +67,8 @@ export function Whiteboard({
   const [isPanning, setIsPanning] = useState(false);
   const lastPanPoint = useRef({ x: 0, y: 0 });
 
-  // Resize canvas to fill container
+  // Resize canvas to fill container using ResizeObserver
+  // This handles both window resize and sidebar collapse/expand
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -75,13 +76,23 @@ export function Whiteboard({
 
     const resizeCanvas = () => {
       const rect = container.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
     };
 
+    // Use ResizeObserver to detect container size changes (e.g., sidebar collapse)
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+
+    resizeObserver.observe(container);
     resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
   }, []);
 
   // Native wheel event listener with passive: false to allow preventDefault
