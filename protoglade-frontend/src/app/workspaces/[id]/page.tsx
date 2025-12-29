@@ -629,41 +629,73 @@ export default function WorkspacePage() {
     );
   }
 
-  return (
-    <div className="h-screen flex bg-[var(--color-bg)] overflow-hidden">
-      <WorkspaceSidebar
-        workspace={workspace}
-        workspaceId={workspaceId}
-        allWorkspaces={allWorkspaces}
-        projects={projects}
-        sidebarCollapsed={sidebarCollapsed}
-        sidebarView={sidebarView}
-        showWorkspaceSwitcher={showWorkspaceSwitcher}
-        user={user}
-        onCollapse={() => setSidebarCollapsed(true)}
-        onExpand={() => setSidebarCollapsed(false)}
-        onToggleWorkspaceSwitcher={() => setShowWorkspaceSwitcher(!showWorkspaceSwitcher)}
-        onCloseWorkspaceSwitcher={() => setShowWorkspaceSwitcher(false)}
-        onCreateProject={() => setShowCreateProjectModal(true)}
-        onCreateWorkspace={() => setShowCreateWorkspaceModal(true)}
-        onSelectProject={setSelectedProjectId}
-        onToggleSidebarView={() => setSidebarView(sidebarView === 'members' ? 'projects' : 'members')}
-        onInviteMember={() => setShowInviteModal(true)}
-        selectedProjectId={selectedProjectId}
-        onLogout={() => {
-          logout();
-          router.push('/auth/login');
-        }}
-        onProjectsReordered={(reorderedProjects) => setProjects(reorderedProjects)}
-        onWorkspacesReordered={(reorderedWorkspaces) => setAllWorkspaces(reorderedWorkspaces)}
-      />
+  // Check if we're in whiteboard mode - whiteboard uses overlay layout
+  const isWhiteboardMode = selectedProjectId && selectedProject?.type === 'whiteboard';
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
+  return (
+    <div className="h-screen flex bg-[var(--color-bg)] overflow-hidden relative">
+      {/* Whiteboard Layer - positioned absolutely behind everything */}
+      {isWhiteboardMode && (
+        <div className="absolute inset-0 z-0">
+          {isLoadingProject ? (
+            <div className="w-full h-full flex items-center justify-center bg-white">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-text-muted)] border-t-transparent" />
+            </div>
+          ) : (
+            <Whiteboard
+              projectId={selectedProjectId}
+              strokes={strokes}
+              remoteStrokes={remoteStrokes}
+              remoteCursors={remoteCursors}
+              onStrokeStart={handleStrokeStart}
+              onStrokePoint={handleStrokePoint}
+              onStrokeEnd={handleStrokeEnd}
+              onUndo={handleWhiteboardUndo}
+              onClear={handleWhiteboardClear}
+              onCursorMove={handleWhiteboardCursorMove}
+              onCursorLeave={emitCursorLeave}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Sidebar - floats on top for whiteboard mode */}
+      <div className={isWhiteboardMode ? 'relative z-10' : ''}>
+        <WorkspaceSidebar
+          workspace={workspace}
+          workspaceId={workspaceId}
+          allWorkspaces={allWorkspaces}
+          projects={projects}
+          sidebarCollapsed={sidebarCollapsed}
+          sidebarView={sidebarView}
+          showWorkspaceSwitcher={showWorkspaceSwitcher}
+          user={user}
+          onCollapse={() => setSidebarCollapsed(true)}
+          onExpand={() => setSidebarCollapsed(false)}
+          onToggleWorkspaceSwitcher={() => setShowWorkspaceSwitcher(!showWorkspaceSwitcher)}
+          onCloseWorkspaceSwitcher={() => setShowWorkspaceSwitcher(false)}
+          onCreateProject={() => setShowCreateProjectModal(true)}
+          onCreateWorkspace={() => setShowCreateWorkspaceModal(true)}
+          onSelectProject={setSelectedProjectId}
+          onToggleSidebarView={() => setSidebarView(sidebarView === 'members' ? 'projects' : 'members')}
+          onInviteMember={() => setShowInviteModal(true)}
+          selectedProjectId={selectedProjectId}
+          onLogout={() => {
+            logout();
+            router.push('/auth/login');
+          }}
+          onProjectsReordered={(reorderedProjects) => setProjects(reorderedProjects)}
+          onWorkspacesReordered={(reorderedWorkspaces) => setAllWorkspaces(reorderedWorkspaces)}
+        />
+      </div>
+
+      {/* Main Content - for non-whiteboard views */}
+      <div className={`flex-1 flex flex-col h-full min-w-0 overflow-hidden ${isWhiteboardMode ? 'pointer-events-none' : ''}`}>
         {selectedProjectId && selectedProject ? (
           <>
             {selectedProject.type === 'whiteboard' ? (
-              <>
+              /* Whiteboard header floats on top */
+              <div className="pointer-events-auto relative z-10">
                 <WhiteboardHeader
                   project={selectedProject}
                   sidebarCollapsed={sidebarCollapsed}
@@ -671,26 +703,7 @@ export default function WorkspacePage() {
                   onlineUsers={onlineUsers}
                   currentUserId={user?.id}
                 />
-                {isLoadingProject ? (
-                  <div className="flex-1 flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--color-text-muted)] border-t-transparent" />
-                  </div>
-                ) : (
-                  <Whiteboard
-                    projectId={selectedProjectId}
-                    strokes={strokes}
-                    remoteStrokes={remoteStrokes}
-                    remoteCursors={remoteCursors}
-                    onStrokeStart={handleStrokeStart}
-                    onStrokePoint={handleStrokePoint}
-                    onStrokeEnd={handleStrokeEnd}
-                    onUndo={handleWhiteboardUndo}
-                    onClear={handleWhiteboardClear}
-                    onCursorMove={handleWhiteboardCursorMove}
-                    onCursorLeave={emitCursorLeave}
-                  />
-                )}
-              </>
+              </div>
             ) : (
               <>
                 <ProjectHeader

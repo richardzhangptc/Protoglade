@@ -68,8 +68,8 @@ export function Whiteboard({
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const lastPanPoint = useRef({ x: 0, y: 0 });
 
-  // Resize canvas to fill container using ResizeObserver
-  // This handles both window resize and sidebar collapse/expand
+  // Resize canvas to fill container (full screen)
+  // Whiteboard is now positioned absolutely and independent of sidebar
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -79,6 +79,7 @@ export function Whiteboard({
       const rect = container.getBoundingClientRect();
       const newWidth = Math.floor(rect.width);
       const newHeight = Math.floor(rect.height);
+
       if (canvas.width !== newWidth || canvas.height !== newHeight) {
         canvas.width = newWidth;
         canvas.height = newHeight;
@@ -87,7 +88,7 @@ export function Whiteboard({
       }
     };
 
-    // Use ResizeObserver to detect container size changes (e.g., sidebar collapse)
+    // Use ResizeObserver to detect container size changes (window resize)
     const resizeObserver = new ResizeObserver(() => {
       resizeCanvas();
     });
@@ -344,9 +345,20 @@ export function Whiteboard({
   }, []);
 
   return (
-    <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center gap-4 p-3 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div ref={containerRef} className="w-full h-full relative">
+      {/* Canvas - fills entire container */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 touch-none bg-white"
+        style={{ cursor: isPanning ? 'grabbing' : 'crosshair' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+      />
+
+      {/* Floating Toolbar - positioned at top center */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-4 px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
         {/* Color picker */}
         <div className="flex items-center gap-1">
           {COLORS.map((c) => (
@@ -430,22 +442,9 @@ export function Whiteboard({
         </div>
       </div>
 
-      {/* Canvas */}
-      <div className="flex-1 relative overflow-hidden bg-white">
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 touch-none"
-          style={{ cursor: isPanning ? 'grabbing' : 'crosshair' }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerLeave}
-        />
-
-        {/* Help text */}
-        <div className="absolute bottom-4 right-4 text-xs text-gray-400 pointer-events-none">
-          Two-finger scroll to pan • Pinch to zoom • Alt+drag to pan
-        </div>
+      {/* Help text */}
+      <div className="absolute bottom-4 right-4 text-xs text-gray-400 pointer-events-none">
+        Two-finger scroll to pan • Pinch to zoom • Alt+drag to pan
       </div>
     </div>
   );
