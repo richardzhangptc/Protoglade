@@ -19,6 +19,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 
@@ -63,7 +64,7 @@ function SortableProject({ project, isSelected, onSelect }: SortableProjectProps
   } = useSortable({ id: project.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform && { ...transform, x: 0 }), // Lock horizontal movement
+    transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
@@ -218,6 +219,7 @@ export function WorkspaceSidebar({
                   sensors={sensors}
                   collisionDetection={closestCenter}
                   onDragEnd={handleProjectDragEnd}
+                  modifiers={[restrictToVerticalAxis, restrictToParentElement]}
                 >
                   <SortableContext
                     items={localProjects.map((p) => p.id)}

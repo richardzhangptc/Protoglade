@@ -22,6 +22,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 
 interface SortableWorkspaceCardProps {
@@ -40,7 +41,7 @@ function SortableWorkspaceCard({ workspace, onNavigate }: SortableWorkspaceCardP
   } = useSortable({ id: workspace.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform && { ...transform, x: 0 }), // Lock horizontal movement
+    transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
@@ -217,6 +218,7 @@ export default function DashboardPage() {
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragEnd={handleWorkspaceDragEnd}
+                modifiers={[restrictToVerticalAxis, restrictToParentElement]}
               >
                 <SortableContext
                   items={workspaces.map((w) => w.id)}

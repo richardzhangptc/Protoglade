@@ -18,6 +18,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 
@@ -50,7 +51,7 @@ function SortableWorkspaceItem({ workspace, isActive, onSelect }: SortableWorksp
   } = useSortable({ id: workspace.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform && { ...transform, x: 0 }), // Lock horizontal movement
+    transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
@@ -195,6 +196,7 @@ export function WorkspaceSwitcher({
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={handleWorkspaceDragEnd}
+              modifiers={[restrictToVerticalAxis, restrictToParentElement]}
             >
               <SortableContext
                 items={localWorkspaces.map((w) => w.id)}
