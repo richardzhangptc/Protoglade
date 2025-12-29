@@ -357,8 +357,8 @@ export function Whiteboard({
         onPointerLeave={handlePointerLeave}
       />
 
-      {/* Floating Toolbar - positioned at top center */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-4 px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
+      {/* Floating Toolbar - positioned at top center below header */}
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 flex items-center gap-4 px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
         {/* Color picker */}
         <div className="flex items-center gap-1">
           {COLORS.map((c) => (
