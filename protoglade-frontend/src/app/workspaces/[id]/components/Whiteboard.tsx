@@ -65,6 +65,7 @@ export function Whiteboard({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const lastPanPoint = useRef({ x: 0, y: 0 });
 
   // Resize canvas to fill container using ResizeObserver
@@ -76,9 +77,13 @@ export function Whiteboard({
 
     const resizeCanvas = () => {
       const rect = container.getBoundingClientRect();
-      if (canvas.width !== rect.width || canvas.height !== rect.height) {
-        canvas.width = rect.width;
-        canvas.height = rect.height;
+      const newWidth = Math.floor(rect.width);
+      const newHeight = Math.floor(rect.height);
+      if (canvas.width !== newWidth || canvas.height !== newHeight) {
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        // Update state to trigger redraw
+        setCanvasSize({ width: newWidth, height: newHeight });
       }
     };
 
@@ -203,7 +208,7 @@ export function Whiteboard({
 
       ctx.restore();
     });
-  }, [strokes, remoteStrokes, currentStroke, pan, zoom, color, size, remoteCursors]);
+  }, [strokes, remoteStrokes, currentStroke, pan, zoom, color, size, remoteCursors, canvasSize]);
 
   const drawStroke = (
     ctx: CanvasRenderingContext2D,
