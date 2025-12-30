@@ -647,6 +647,7 @@ export default function WorkspacePage() {
               strokes={strokes}
               remoteStrokes={remoteStrokes}
               remoteCursors={remoteCursors}
+              sidebarCollapsed={sidebarCollapsed}
               onStrokeStart={handleStrokeStart}
               onStrokePoint={handleStrokePoint}
               onStrokeEnd={handleStrokeEnd}
