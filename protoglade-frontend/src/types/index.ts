@@ -134,3 +134,19 @@ export interface WhiteboardShape {
   projectId: string;
 }
 
+export interface WhiteboardText {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  fontSize: number;
+  fontWeight: 'normal' | 'bold';
+  color: string;
+  align: 'left' | 'center' | 'right';
+  createdAt: string;
+  createdBy: string;
+  projectId: string;
+}
+

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { ShapeElement } from './types';
+import { ShapeElement, TextElement } from './types';
 import { WhiteboardStroke } from '@/types';
 
 // Action types for undo/redo
@@ -8,7 +8,12 @@ export type HistoryAction =
   | { type: 'shape_create'; shape: ShapeElement }
   | { type: 'shape_delete'; shape: ShapeElement }
   | { type: 'shape_move'; shapeId: string; fromX: number; fromY: number; toX: number; toY: number }
-  | { type: 'shape_resize'; shapeId: string; from: ShapeElement; to: ShapeElement };
+  | { type: 'shape_resize'; shapeId: string; from: ShapeElement; to: ShapeElement }
+  | { type: 'text_create'; text: TextElement }
+  | { type: 'text_delete'; text: TextElement }
+  | { type: 'text_move'; textId: string; fromX: number; fromY: number; toX: number; toY: number }
+  | { type: 'text_resize'; textId: string; from: TextElement; to: TextElement }
+  | { type: 'text_edit'; textId: string; fromContent: string; toContent: string };
 
 interface UseHistoryOptions {
   maxHistory?: number;
@@ -86,4 +91,3 @@ export function useHistory(options: UseHistoryOptions = {}): UseHistoryReturn {
     clear,
   };
 }
-

@@ -80,6 +80,20 @@ export function WhiteboardToolbar({
         </svg>
       </button>
 
+      <button
+        onClick={() => onToolClick('text')}
+        className={`p-2.5 rounded-xl transition-all ${
+          activeTool === 'text'
+            ? 'bg-[var(--color-primary)] text-[var(--color-text)]'
+            : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
+        }`}
+        title="Text"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 6v2m16-2v2M9 6v12m6-12v12M9 18h6" />
+        </svg>
+      </button>
+
       {/* Divider */}
       <div className="h-px w-full bg-[var(--color-border)] my-1" />
 

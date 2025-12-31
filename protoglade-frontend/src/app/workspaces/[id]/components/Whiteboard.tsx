@@ -6,6 +6,7 @@ import {
   ToolType,
   ResizeHandle,
   ShapeElement,
+  TextElement,
   RemoteStroke,
   RemoteCursor,
 } from './whiteboard/types';
@@ -20,6 +21,8 @@ import { useHistory, HistoryAction } from './whiteboard/useHistory';
 import { WhiteboardToolbar } from './whiteboard/WhiteboardToolbar';
 import { PenOptionsPopover } from './whiteboard/PenOptionsPopover';
 import { ShapeOptionsPopover } from './whiteboard/ShapeOptionsPopover';
+import { TextBox } from './whiteboard/TextBox';
+import { TextFormatToolbar } from './whiteboard/TextFormatToolbar';
 
 interface WhiteboardProps {
   projectId: string;
@@ -28,6 +31,7 @@ interface WhiteboardProps {
   remoteCursors: RemoteCursor[];
   sidebarCollapsed: boolean;
   initialShapes?: ShapeElement[];
+  initialTexts?: TextElement[];
   onStrokeStart: (strokeId: string, point: WhiteboardPoint, color: string, size: number) => void;
   onStrokePoint: (strokeId: string, point: WhiteboardPoint) => void;
   onStrokeEnd: (strokeId: string, points: WhiteboardPoint[], color: string, size: number) => void;
@@ -39,6 +43,9 @@ interface WhiteboardProps {
   onShapeCreate?: (shape: ShapeElement) => void;
   onShapeUpdate?: (shape: ShapeElement) => void;
   onShapeDelete?: (id: string) => void;
+  onTextCreate?: (text: TextElement) => void;
+  onTextUpdate?: (text: TextElement) => void;
+  onTextDelete?: (id: string) => void;
 }
 
 export function Whiteboard({
@@ -47,6 +54,7 @@ export function Whiteboard({
   remoteCursors,
   sidebarCollapsed,
   initialShapes = [],
+  initialTexts = [],
   onStrokeStart,
   onStrokePoint,
   onStrokeEnd,
@@ -58,12 +66,16 @@ export function Whiteboard({
   onShapeCreate,
   onShapeUpdate,
   onShapeDelete,
+  onTextCreate,
+  onTextUpdate,
+  onTextDelete,
 }: WhiteboardProps) {
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastPanPoint = useRef({ x: 0, y: 0 });
   const initializedRef = useRef(false);
+  const textInitializedRef = useRef(false);
 
   // Canvas state
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -80,6 +92,11 @@ export function Whiteboard({
   const [selectedShapeType, setSelectedShapeType] = useState<WhiteboardShapeType>('rectangle');
   const [shapeFilled, setShapeFilled] = useState(false);
 
+  // Text tool state
+  const [textFontSize, setTextFontSize] = useState(16);
+  const [textFontWeight, setTextFontWeight] = useState<'normal' | 'bold'>('normal');
+  const [textAlign, setTextAlign] = useState<'left' | 'center'>('left');
+
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentStroke, setCurrentStroke] = useState<WhiteboardPoint[]>([]);
@@ -92,13 +109,18 @@ export function Whiteboard({
 
   // Element state
   const [shapes, setShapes] = useState<ShapeElement[]>(initialShapes);
+  const [texts, setTexts] = useState<TextElement[]>(initialTexts);
 
   // Selection state
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [selectedElementType, setSelectedElementType] = useState<'shape' | null>(null);
+  const [selectedElementType, setSelectedElementType] = useState<'shape' | 'text' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
+
+  // Text editing state
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [textBeforeEdit, setTextBeforeEdit] = useState<string>('');
 
   // Resize state
   const [activeResizeHandle, setActiveResizeHandle] = useState<ResizeHandle>(null);
@@ -116,6 +138,14 @@ export function Whiteboard({
       initializedRef.current = true;
     }
   }, [initialShapes]);
+
+  // Initialize texts from props
+  useEffect(() => {
+    if (!textInitializedRef.current && initialTexts.length > 0) {
+      setTexts(initialTexts);
+      textInitializedRef.current = true;
+    }
+  }, [initialTexts]);
 
   // Apply undo action
   const applyUndo = useCallback((action: HistoryAction) => {
@@ -148,8 +178,44 @@ export function Whiteboard({
         );
         onShapeUpdate?.(action.from);
         break;
+      case 'text_create':
+        setTexts((prev) => prev.filter((t) => t.id !== action.text.id));
+        onTextDelete?.(action.text.id);
+        break;
+      case 'text_delete':
+        setTexts((prev) => [...prev, action.text]);
+        onTextCreate?.(action.text);
+        break;
+      case 'text_move':
+        setTexts((prev) =>
+          prev.map((t) =>
+            t.id === action.textId ? { ...t, x: action.fromX, y: action.fromY } : t
+          )
+        );
+        const movedText = texts.find((t) => t.id === action.textId);
+        if (movedText) {
+          onTextUpdate?.({ ...movedText, x: action.fromX, y: action.fromY });
+        }
+        break;
+      case 'text_resize':
+        setTexts((prev) =>
+          prev.map((t) => (t.id === action.textId ? action.from : t))
+        );
+        onTextUpdate?.(action.from);
+        break;
+      case 'text_edit':
+        setTexts((prev) =>
+          prev.map((t) =>
+            t.id === action.textId ? { ...t, content: action.fromContent } : t
+          )
+        );
+        const editedText = texts.find((t) => t.id === action.textId);
+        if (editedText) {
+          onTextUpdate?.({ ...editedText, content: action.fromContent });
+        }
+        break;
     }
-  }, [onStrokeUndo, onShapeDelete, onShapeCreate, onShapeUpdate, shapes]);
+  }, [onStrokeUndo, onShapeDelete, onShapeCreate, onShapeUpdate, shapes, onTextDelete, onTextCreate, onTextUpdate, texts]);
 
   // Apply redo action
   const applyRedo = useCallback((action: HistoryAction) => {
@@ -182,8 +248,44 @@ export function Whiteboard({
         );
         onShapeUpdate?.(action.to);
         break;
+      case 'text_create':
+        setTexts((prev) => [...prev, action.text]);
+        onTextCreate?.(action.text);
+        break;
+      case 'text_delete':
+        setTexts((prev) => prev.filter((t) => t.id !== action.text.id));
+        onTextDelete?.(action.text.id);
+        break;
+      case 'text_move':
+        setTexts((prev) =>
+          prev.map((t) =>
+            t.id === action.textId ? { ...t, x: action.toX, y: action.toY } : t
+          )
+        );
+        const movedText = texts.find((t) => t.id === action.textId);
+        if (movedText) {
+          onTextUpdate?.({ ...movedText, x: action.toX, y: action.toY });
+        }
+        break;
+      case 'text_resize':
+        setTexts((prev) =>
+          prev.map((t) => (t.id === action.textId ? action.to : t))
+        );
+        onTextUpdate?.(action.to);
+        break;
+      case 'text_edit':
+        setTexts((prev) =>
+          prev.map((t) =>
+            t.id === action.textId ? { ...t, content: action.toContent } : t
+          )
+        );
+        const editedText = texts.find((t) => t.id === action.textId);
+        if (editedText) {
+          onTextUpdate?.({ ...editedText, content: action.toContent });
+        }
+        break;
     }
-  }, [onStrokeRedo, onShapeCreate, onShapeDelete, onShapeUpdate, shapes]);
+  }, [onStrokeRedo, onShapeCreate, onShapeDelete, onShapeUpdate, shapes, onTextCreate, onTextDelete, onTextUpdate, texts]);
 
   // Handle undo
   const handleUndo = useCallback(() => {
@@ -204,6 +306,9 @@ export function Whiteboard({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts if editing text
+      if (editingTextId) return;
+
       // Undo: Ctrl+Z or Cmd+Z
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -224,8 +329,15 @@ export function Whiteboard({
           const shapeToDelete = shapes.find((s) => s.id === selectedElementId);
           if (shapeToDelete) {
             pushAction({ type: 'shape_delete', shape: shapeToDelete });
-            setShapes((prev) => prev.filter((s) => s.id !== selectedElementId));
-            onShapeDelete?.(selectedElementId);
+          setShapes((prev) => prev.filter((s) => s.id !== selectedElementId));
+          onShapeDelete?.(selectedElementId);
+          }
+        } else if (selectedElementType === 'text') {
+          const textToDelete = texts.find((t) => t.id === selectedElementId);
+          if (textToDelete) {
+            pushAction({ type: 'text_delete', text: textToDelete });
+            setTexts((prev) => prev.filter((t) => t.id !== selectedElementId));
+            onTextDelete?.(selectedElementId);
           }
         }
         setSelectedElementId(null);
@@ -241,7 +353,7 @@ export function Whiteboard({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElementId, selectedElementType, onShapeDelete, shapes, handleUndo, handleRedo, pushAction]);
+  }, [selectedElementId, selectedElementType, onShapeDelete, onTextDelete, shapes, texts, handleUndo, handleRedo, pushAction, editingTextId]);
 
   // Canvas resize
   useEffect(() => {
@@ -271,7 +383,8 @@ export function Whiteboard({
   // Wheel/pinch zoom handler
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
     const handleNativeWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -303,8 +416,10 @@ export function Whiteboard({
       }
     };
 
-    canvas.addEventListener('wheel', handleNativeWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', handleNativeWheel);
+    // Attach to the container so wheel events still work when the cursor is over
+    // DOM overlays (text boxes, floating toolbars), not just the <canvas>.
+    container.addEventListener('wheel', handleNativeWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleNativeWheel);
   }, []);
 
   // Canvas drawing
@@ -326,7 +441,7 @@ export function Whiteboard({
 
     // Draw shapes
     shapes.forEach((shape) => {
-      drawShape(ctx, shape, shape.id === selectedElementId, zoom);
+      drawShape(ctx, shape, shape.id === selectedElementId && selectedElementType === 'shape', zoom);
     });
 
     // Draw current shape being drawn
@@ -355,10 +470,10 @@ export function Whiteboard({
     remoteCursors.forEach((cursor) => {
       drawRemoteCursor(ctx, cursor);
     });
-  }, [strokes, remoteStrokes, currentStroke, pan, zoom, color, size, remoteCursors, canvasSize, shapes, currentShape, selectedElementId]);
+  }, [strokes, remoteStrokes, currentStroke, pan, zoom, color, size, remoteCursors, canvasSize, shapes, currentShape, selectedElementId, selectedElementType]);
 
   // Helper functions
-  const getCanvasPoint = useCallback((e: React.PointerEvent): WhiteboardPoint => {
+  const getCanvasPoint = useCallback((e: React.PointerEvent | React.MouseEvent): WhiteboardPoint => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
 
@@ -369,6 +484,90 @@ export function Whiteboard({
     };
   }, [pan, zoom]);
 
+  // Text box handlers
+  const handleTextSelect = useCallback((textId: string) => {
+    setSelectedElementId(textId);
+    setSelectedElementType('text');
+    setEditingTextId(null);
+  }, []);
+
+  const handleTextStartEdit = useCallback((textId: string) => {
+    const text = texts.find((t) => t.id === textId);
+    if (text) {
+      setTextBeforeEdit(text.content);
+      setEditingTextId(textId);
+    }
+  }, [texts]);
+
+  const handleTextEndEdit = useCallback((textId: string, newContent: string) => {
+    const text = texts.find((t) => t.id === textId);
+    if (text && newContent !== textBeforeEdit) {
+      pushAction({
+        type: 'text_edit',
+        textId,
+        fromContent: textBeforeEdit,
+        toContent: newContent,
+      });
+      setTexts((prev) =>
+        prev.map((t) => (t.id === textId ? { ...t, content: newContent } : t))
+      );
+      onTextUpdate?.({ ...text, content: newContent });
+    }
+    setEditingTextId(null);
+  }, [textBeforeEdit, pushAction, onTextUpdate, texts]);
+
+  const handleTextCancelEdit = useCallback(() => {
+    setEditingTextId(null);
+  }, []);
+
+  const handleTextMove = useCallback((textId: string, x: number, y: number) => {
+    setTexts((prev) =>
+      prev.map((t) => (t.id === textId ? { ...t, x, y } : t))
+    );
+  }, []);
+
+  const handleTextMoveEnd = useCallback((textId: string) => {
+    const text = texts.find((t) => t.id === textId);
+    if (text && dragStartPosition && (text.x !== dragStartPosition.x || text.y !== dragStartPosition.y)) {
+      pushAction({
+        type: 'text_move',
+        textId,
+        fromX: dragStartPosition.x,
+        fromY: dragStartPosition.y,
+        toX: text.x,
+        toY: text.y,
+      });
+      onTextUpdate?.(text);
+    }
+    setDragStartPosition(null);
+  }, [texts, dragStartPosition, pushAction, onTextUpdate]);
+
+  const handleTextResize = useCallback((textId: string, width: number, height: number) => {
+    setTexts((prev) =>
+      prev.map((t) => (t.id === textId ? { ...t, width, height } : t))
+    );
+  }, []);
+
+  const handleTextResizeEnd = useCallback((textId: string) => {
+    const text = texts.find((t) => t.id === textId);
+    if (text) {
+      // We'd need to track resize start state similar to shapes
+      // For now just persist the update
+      onTextUpdate?.(text);
+    }
+  }, [texts, onTextUpdate]);
+
+  // Update text format from floating toolbar
+  const handleTextFormatUpdate = useCallback((textId: string, updates: Partial<TextElement>) => {
+    setTexts((prev) =>
+      prev.map((t) => (t.id === textId ? { ...t, ...updates } : t))
+    );
+    const text = texts.find((t) => t.id === textId);
+    if (text) {
+      onTextUpdate?.({ ...text, ...updates });
+    }
+  }, [texts, onTextUpdate]);
+
   // Pointer handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -378,6 +577,12 @@ export function Whiteboard({
     // Close options panels when interacting with canvas
     setShowPenOptions(false);
     setShowShapeOptions(false);
+
+    // Commit any text editing when clicking canvas
+    if (editingTextId) {
+      // The blur event on the text box will handle committing
+      return;
+    }
 
     // Middle click or alt+click for panning
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
@@ -451,10 +656,35 @@ export function Whiteboard({
         onStrokeStart(strokeId, point, color, size);
         break;
       }
+
+      case 'text': {
+        // Create new text box at click position
+        const newText: TextElement = {
+          id: crypto.randomUUID(),
+          x: point.x,
+          y: point.y,
+          width: 200,
+          height: 32,
+          content: '',
+          fontSize: textFontSize,
+          fontWeight: textFontWeight,
+          color: color,
+          align: textAlign,
+        };
+        setTexts((prev) => [...prev, newText]);
+        pushAction({ type: 'text_create', text: newText });
+        onTextCreate?.(newText);
+        // Select and start editing
+        setSelectedElementId(newText.id);
+        setSelectedElementType('text');
+        setEditingTextId(newText.id);
+        setTextBeforeEdit('');
+        break;
+      }
     }
 
     canvas.setPointerCapture(e.pointerId);
-  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, zoom]);
+  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, zoom, editingTextId, textFontSize, textFontWeight, textAlign, pushAction, onTextCreate]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current;
@@ -557,8 +787,8 @@ export function Whiteboard({
 
     // Handle pen drawing
     if (isDrawing && currentStrokeId) {
-      setCurrentStroke((prev) => [...prev, point]);
-      onStrokePoint(currentStrokeId, point);
+    setCurrentStroke((prev) => [...prev, point]);
+    onStrokePoint(currentStrokeId, point);
       return;
     }
 
@@ -691,8 +921,10 @@ export function Whiteboard({
 
   const handleClear = useCallback(() => {
     setShapes([]);
+    setTexts([]);
     setSelectedElementId(null);
     setSelectedElementType(null);
+    setEditingTextId(null);
     clearHistory();
     onClear();
   }, [onClear, clearHistory]);
@@ -703,6 +935,7 @@ export function Whiteboard({
     if (hoveredResizeHandle) return getResizeCursor(hoveredResizeHandle);
     switch (activeTool) {
       case 'select': return 'default';
+      case 'text': return 'text';
       case 'shapes':
       case 'pen':
       default: return 'crosshair';
@@ -721,6 +954,34 @@ export function Whiteboard({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
       />
+
+      {/* Text boxes layer - rendered as DOM elements on top of canvas */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {texts.map((text) => (
+          <div key={text.id} className="pointer-events-auto">
+            <TextBox
+              element={text}
+              isSelected={selectedElementId === text.id}
+              isEditing={editingTextId === text.id}
+              zoom={zoom}
+              pan={pan}
+              onSelect={() => handleTextSelect(text.id)}
+              onStartEdit={() => handleTextStartEdit(text.id)}
+              onEndEdit={(content) => handleTextEndEdit(text.id, content)}
+              onCancelEdit={handleTextCancelEdit}
+              onMove={(x, y) => {
+                if (!dragStartPosition) {
+                  setDragStartPosition({ x: text.x, y: text.y });
+                }
+                handleTextMove(text.id, x, y);
+              }}
+              onMoveEnd={() => handleTextMoveEnd(text.id)}
+              onResize={(w, h) => handleTextResize(text.id, w, h)}
+              onResizeEnd={() => handleTextResizeEnd(text.id)}
+            />
+          </div>
+            ))}
+          </div>
 
       {/* Toolbar */}
       <WhiteboardToolbar
@@ -763,6 +1024,20 @@ export function Whiteboard({
           onFilledChange={setShapeFilled}
         />
       )}
+
+      {/* Text Format Toolbar - floating above selected text */}
+      {selectedElementId && selectedElementType === 'text' && !editingTextId && (() => {
+        const selectedText = texts.find((t) => t.id === selectedElementId);
+        if (!selectedText) return null;
+        return (
+          <TextFormatToolbar
+            element={selectedText}
+            zoom={zoom}
+            pan={pan}
+            onUpdate={(updates) => handleTextFormatUpdate(selectedElementId, updates)}
+          />
+        );
+      })()}
 
       {/* Help text */}
       <div className="absolute bottom-4 right-4 text-xs text-gray-400 pointer-events-none">

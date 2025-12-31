@@ -14,6 +14,7 @@ import {
   WhiteboardPoint,
   WhiteboardShape,
   WhiteboardShapeType,
+  WhiteboardText,
 } from '@/types';
 import {
   usePresence,
@@ -101,6 +102,7 @@ export default function WorkspacePage() {
   const [strokes, setStrokes] = useState<WhiteboardStroke[]>([]);
   const [remoteStrokes, setRemoteStrokes] = useState<Map<string, { id: string; points: WhiteboardPoint[]; color: string; size: number; userId: string }>>(new Map());
   const [shapes, setShapes] = useState<WhiteboardShape[]>([]);
+  const [texts, setTexts] = useState<WhiteboardText[]>([]);
 
   // Refs
   const lastCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -615,6 +617,7 @@ export default function WorkspacePage() {
 
     setStrokes([]);
     setShapes([]);
+    setTexts([]);
     setRemoteStrokes(new Map());
     emitCanvasClear();
 
@@ -666,6 +669,22 @@ export default function WorkspacePage() {
     } catch (error) {
       console.error('Failed to delete shape:', error);
     }
+  }, []);
+
+  // Text element handlers (persistence to be implemented with backend)
+  const handleTextCreate = useCallback(async (text: { id: string; x: number; y: number; width: number; height: number; content: string; fontSize: number; fontWeight: 'normal' | 'bold'; color: string; align: 'left' | 'center' | 'right' }) => {
+    // TODO: Persist to backend when API is available
+    console.log('Text created:', text);
+  }, []);
+
+  const handleTextUpdate = useCallback(async (text: { id: string; x: number; y: number; width: number; height: number; content: string; fontSize: number; fontWeight: 'normal' | 'bold'; color: string; align: 'left' | 'center' | 'right' }) => {
+    // TODO: Persist to backend when API is available
+    console.log('Text updated:', text);
+  }, []);
+
+  const handleTextDelete = useCallback(async (id: string) => {
+    // TODO: Persist to backend when API is available
+    console.log('Text deleted:', id);
   }, []);
 
   const handleWhiteboardCursorMove = useCallback((x: number, y: number) => {
@@ -731,6 +750,7 @@ export default function WorkspacePage() {
               remoteCursors={remoteCursors}
               sidebarCollapsed={sidebarCollapsed}
               initialShapes={shapes}
+              initialTexts={texts}
               onStrokeStart={handleStrokeStart}
               onStrokePoint={handleStrokePoint}
               onStrokeEnd={handleStrokeEnd}
@@ -742,6 +762,9 @@ export default function WorkspacePage() {
               onShapeCreate={handleShapeCreate}
               onShapeUpdate={handleShapeUpdate}
               onShapeDelete={handleShapeDelete}
+              onTextCreate={handleTextCreate}
+              onTextUpdate={handleTextUpdate}
+              onTextDelete={handleTextDelete}
             />
           )}
         </div>

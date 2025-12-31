@@ -1,6 +1,6 @@
 import { WhiteboardShapeType, WhiteboardPoint } from '@/types';
 
-export type ToolType = 'select' | 'shapes' | 'pen';
+export type ToolType = 'select' | 'shapes' | 'pen' | 'text';
 
 export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | null;
 
@@ -15,6 +15,19 @@ export interface ShapeElement {
   color: string;
   strokeWidth: number;
   filled: boolean;
+}
+
+export interface TextElement {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  fontSize: number;
+  fontWeight: 'normal' | 'bold';
+  color: string;
+  align: 'left' | 'center' | 'right';
 }
 
 export interface RemoteStroke {
@@ -37,4 +50,3 @@ export interface RemoteCursor {
   y: number;
   lastUpdate: number;
 }
-
