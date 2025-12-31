@@ -16,6 +16,7 @@ import {
   getResizeCursor,
   normalizeShape,
 } from './whiteboard/hitTestUtils';
+import { useHistory, HistoryAction } from './whiteboard/useHistory';
 import { WhiteboardToolbar } from './whiteboard/WhiteboardToolbar';
 import { PenOptionsPopover } from './whiteboard/PenOptionsPopover';
 import { ShapeOptionsPopover } from './whiteboard/ShapeOptionsPopover';
@@ -30,7 +31,8 @@ interface WhiteboardProps {
   onStrokeStart: (strokeId: string, point: WhiteboardPoint, color: string, size: number) => void;
   onStrokePoint: (strokeId: string, point: WhiteboardPoint) => void;
   onStrokeEnd: (strokeId: string, points: WhiteboardPoint[], color: string, size: number) => void;
-  onUndo: () => void;
+  onStrokeUndo: (strokeId: string) => void;
+  onStrokeRedo: (stroke: WhiteboardStroke) => void;
   onClear: () => void;
   onCursorMove: (x: number, y: number) => void;
   onCursorLeave: () => void;
@@ -48,7 +50,8 @@ export function Whiteboard({
   onStrokeStart,
   onStrokePoint,
   onStrokeEnd,
-  onUndo,
+  onStrokeUndo,
+  onStrokeRedo,
   onClear,
   onCursorMove,
   onCursorLeave,
@@ -95,12 +98,16 @@ export function Whiteboard({
   const [selectedElementType, setSelectedElementType] = useState<'shape' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Resize state
   const [activeResizeHandle, setActiveResizeHandle] = useState<ResizeHandle>(null);
   const [hoveredResizeHandle, setHoveredResizeHandle] = useState<ResizeHandle>(null);
   const [resizeStartShape, setResizeStartShape] = useState<ShapeElement | null>(null);
   const [resizeStartPoint, setResizeStartPoint] = useState<WhiteboardPoint | null>(null);
+
+  // History for undo/redo
+  const { canUndo, canRedo, pushAction, undo, redo, clear: clearHistory } = useHistory();
 
   // Initialize shapes from props
   useEffect(() => {
@@ -110,17 +117,122 @@ export function Whiteboard({
     }
   }, [initialShapes]);
 
+  // Apply undo action
+  const applyUndo = useCallback((action: HistoryAction) => {
+    switch (action.type) {
+      case 'stroke_create':
+        onStrokeUndo(action.stroke.id);
+        break;
+      case 'shape_create':
+        setShapes((prev) => prev.filter((s) => s.id !== action.shape.id));
+        onShapeDelete?.(action.shape.id);
+        break;
+      case 'shape_delete':
+        setShapes((prev) => [...prev, action.shape]);
+        onShapeCreate?.(action.shape);
+        break;
+      case 'shape_move':
+        setShapes((prev) =>
+          prev.map((s) =>
+            s.id === action.shapeId ? { ...s, x: action.fromX, y: action.fromY } : s
+          )
+        );
+        const movedShape = shapes.find((s) => s.id === action.shapeId);
+        if (movedShape) {
+          onShapeUpdate?.({ ...movedShape, x: action.fromX, y: action.fromY });
+        }
+        break;
+      case 'shape_resize':
+        setShapes((prev) =>
+          prev.map((s) => (s.id === action.shapeId ? action.from : s))
+        );
+        onShapeUpdate?.(action.from);
+        break;
+    }
+  }, [onStrokeUndo, onShapeDelete, onShapeCreate, onShapeUpdate, shapes]);
+
+  // Apply redo action
+  const applyRedo = useCallback((action: HistoryAction) => {
+    switch (action.type) {
+      case 'stroke_create':
+        onStrokeRedo(action.stroke);
+        break;
+      case 'shape_create':
+        setShapes((prev) => [...prev, action.shape]);
+        onShapeCreate?.(action.shape);
+        break;
+      case 'shape_delete':
+        setShapes((prev) => prev.filter((s) => s.id !== action.shape.id));
+        onShapeDelete?.(action.shape.id);
+        break;
+      case 'shape_move':
+        setShapes((prev) =>
+          prev.map((s) =>
+            s.id === action.shapeId ? { ...s, x: action.toX, y: action.toY } : s
+          )
+        );
+        const movedShape = shapes.find((s) => s.id === action.shapeId);
+        if (movedShape) {
+          onShapeUpdate?.({ ...movedShape, x: action.toX, y: action.toY });
+        }
+        break;
+      case 'shape_resize':
+        setShapes((prev) =>
+          prev.map((s) => (s.id === action.shapeId ? action.to : s))
+        );
+        onShapeUpdate?.(action.to);
+        break;
+    }
+  }, [onStrokeRedo, onShapeCreate, onShapeDelete, onShapeUpdate, shapes]);
+
+  // Handle undo
+  const handleUndo = useCallback(() => {
+    const action = undo();
+    if (action) {
+      applyUndo(action);
+    }
+  }, [undo, applyUndo]);
+
+  // Handle redo
+  const handleRedo = useCallback(() => {
+    const action = redo();
+    if (action) {
+      applyRedo(action);
+    }
+  }, [redo, applyRedo]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Undo: Ctrl+Z or Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Redo: Ctrl+Shift+Z, Cmd+Shift+Z, Ctrl+Y, or Cmd+Y
+      if ((e.ctrlKey || e.metaKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Delete selected element
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementId) {
         if (selectedElementType === 'shape') {
-          setShapes((prev) => prev.filter((s) => s.id !== selectedElementId));
-          onShapeDelete?.(selectedElementId);
+          const shapeToDelete = shapes.find((s) => s.id === selectedElementId);
+          if (shapeToDelete) {
+            pushAction({ type: 'shape_delete', shape: shapeToDelete });
+            setShapes((prev) => prev.filter((s) => s.id !== selectedElementId));
+            onShapeDelete?.(selectedElementId);
+          }
         }
         setSelectedElementId(null);
         setSelectedElementType(null);
       }
+
+      // Escape to deselect
       if (e.key === 'Escape') {
         setSelectedElementId(null);
         setSelectedElementType(null);
@@ -129,7 +241,7 @@ export function Whiteboard({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElementId, selectedElementType, onShapeDelete]);
+  }, [selectedElementId, selectedElementType, onShapeDelete, shapes, handleUndo, handleRedo, pushAction]);
 
   // Canvas resize
   useEffect(() => {
@@ -298,10 +410,14 @@ export function Whiteboard({
 
         const hit = hitTestElement(point, shapes);
         if (hit) {
+          const shape = shapes.find((s) => s.id === hit.id);
           setSelectedElementId(hit.id);
           setSelectedElementType(hit.type);
           setIsDragging(true);
           setDragOffset({ x: point.x, y: point.y });
+          if (shape) {
+            setDragStartPosition({ x: shape.x, y: shape.y });
+          }
         } else {
           setSelectedElementId(null);
           setSelectedElementType(null);
@@ -470,13 +586,20 @@ export function Whiteboard({
     }
 
     // End resizing
-    if (activeResizeHandle && selectedElementId && selectedElementType === 'shape') {
+    if (activeResizeHandle && selectedElementId && selectedElementType === 'shape' && resizeStartShape) {
       const shape = shapes.find((s) => s.id === selectedElementId);
       if (shape) {
         const normalizedShape = normalizeShape(shape);
         setShapes((prev) =>
           prev.map((s) => (s.id === selectedElementId ? normalizedShape : s))
         );
+        // Record resize action for undo
+        pushAction({
+          type: 'shape_resize',
+          shapeId: selectedElementId,
+          from: resizeStartShape,
+          to: normalizedShape,
+        });
         onShapeUpdate?.(normalizedShape);
       }
       setActiveResizeHandle(null);
@@ -486,10 +609,22 @@ export function Whiteboard({
     }
 
     // End dragging
-    if (isDragging && selectedElementId && selectedElementType === 'shape') {
+    if (isDragging && selectedElementId && selectedElementType === 'shape' && dragStartPosition) {
       const shape = shapes.find((s) => s.id === selectedElementId);
-      if (shape) onShapeUpdate?.(shape);
+      if (shape && (shape.x !== dragStartPosition.x || shape.y !== dragStartPosition.y)) {
+        // Record move action for undo
+        pushAction({
+          type: 'shape_move',
+          shapeId: selectedElementId,
+          fromX: dragStartPosition.x,
+          fromY: dragStartPosition.y,
+          toX: shape.x,
+          toY: shape.y,
+        });
+        onShapeUpdate?.(shape);
+      }
       setIsDragging(false);
+      setDragStartPosition(null);
       return;
     }
 
@@ -500,6 +635,8 @@ export function Whiteboard({
         setShapes((prev) => [...prev, normalizedShape]);
         setSelectedElementId(normalizedShape.id);
         setSelectedElementType('shape');
+        // Record shape creation for undo
+        pushAction({ type: 'shape_create', shape: normalizedShape });
         onShapeCreate?.(normalizedShape);
       }
       setIsDrawingShape(false);
@@ -511,11 +648,25 @@ export function Whiteboard({
     // End pen drawing
     if (!isDrawing || !currentStrokeId || currentStroke.length === 0) return;
 
+    // Create stroke object for history
+    const newStroke: WhiteboardStroke = {
+      id: currentStrokeId,
+      points: currentStroke,
+      color,
+      size,
+      createdAt: new Date().toISOString(),
+      createdBy: '',
+      projectId: '',
+    };
+
+    // Record stroke for undo
+    pushAction({ type: 'stroke_create', stroke: newStroke });
+
     onStrokeEnd(currentStrokeId, currentStroke, color, size);
     setIsDrawing(false);
     setCurrentStroke([]);
     setCurrentStrokeId(null);
-  }, [isDrawing, isPanning, currentStroke, color, size, currentStrokeId, onStrokeEnd, isDragging, isDrawingShape, currentShape, selectedElementId, selectedElementType, shapes, onShapeUpdate, onShapeCreate, activeResizeHandle]);
+  }, [isDrawing, isPanning, currentStroke, color, size, currentStrokeId, onStrokeEnd, isDragging, isDrawingShape, currentShape, selectedElementId, selectedElementType, shapes, onShapeUpdate, onShapeCreate, activeResizeHandle, resizeStartShape, dragStartPosition, pushAction]);
 
   const handlePointerLeave = useCallback(() => {
     onCursorLeave();
@@ -542,8 +693,9 @@ export function Whiteboard({
     setShapes([]);
     setSelectedElementId(null);
     setSelectedElementType(null);
+    clearHistory();
     onClear();
-  }, [onClear]);
+  }, [onClear, clearHistory]);
 
   const getCursorStyle = useCallback(() => {
     if (isPanning) return 'grabbing';
@@ -575,8 +727,11 @@ export function Whiteboard({
         activeTool={activeTool}
         zoom={zoom}
         sidebarCollapsed={sidebarCollapsed}
+        canUndo={canUndo}
+        canRedo={canRedo}
         onToolClick={handleToolClick}
-        onUndo={onUndo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onClear={handleClear}
         onZoomIn={() => setZoom((z) => Math.min(5, z * 1.25))}
         onZoomOut={() => setZoom((z) => Math.max(0.1, z * 0.8))}
@@ -611,7 +766,7 @@ export function Whiteboard({
 
       {/* Help text */}
       <div className="absolute bottom-4 right-4 text-xs text-gray-400 pointer-events-none">
-        Two-finger scroll to pan • Pinch to zoom • Alt+drag to pan
+        Two-finger scroll to pan • Pinch to zoom • Ctrl+Z undo • Ctrl+Shift+Z redo
       </div>
     </div>
   );

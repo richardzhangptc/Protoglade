@@ -6,8 +6,11 @@ interface WhiteboardToolbarProps {
   activeTool: ToolType;
   zoom: number;
   sidebarCollapsed: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
   onToolClick: (tool: ToolType) => void;
   onUndo: () => void;
+  onRedo: () => void;
   onClear: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -18,8 +21,11 @@ export function WhiteboardToolbar({
   activeTool,
   zoom,
   sidebarCollapsed,
+  canUndo,
+  canRedo,
   onToolClick,
   onUndo,
+  onRedo,
   onClear,
   onZoomIn,
   onZoomOut,
@@ -77,14 +83,34 @@ export function WhiteboardToolbar({
       {/* Divider */}
       <div className="h-px w-full bg-[var(--color-border)] my-1" />
 
-      {/* Action buttons */}
+      {/* Undo/Redo buttons */}
       <button
         onClick={onUndo}
-        className="p-2.5 rounded-xl hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors"
-        title="Undo"
+        disabled={!canUndo}
+        className={`p-2.5 rounded-xl transition-colors ${
+          canUndo
+            ? 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
+            : 'text-[var(--color-text-muted)] opacity-40 cursor-not-allowed'
+        }`}
+        title="Undo (Ctrl+Z)"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+        </svg>
+      </button>
+
+      <button
+        onClick={onRedo}
+        disabled={!canRedo}
+        className={`p-2.5 rounded-xl transition-colors ${
+          canRedo
+            ? 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
+            : 'text-[var(--color-text-muted)] opacity-40 cursor-not-allowed'
+        }`}
+        title="Redo (Ctrl+Shift+Z)"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
         </svg>
       </button>
 
@@ -114,7 +140,7 @@ export function WhiteboardToolbar({
 
       <button
         onClick={onResetView}
-        className="px-2 py-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+        className="w-10 py-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors text-center tabular-nums"
         title="Reset zoom"
       >
         {Math.round(zoom * 100)}%
@@ -132,4 +158,3 @@ export function WhiteboardToolbar({
     </div>
   );
 }
-

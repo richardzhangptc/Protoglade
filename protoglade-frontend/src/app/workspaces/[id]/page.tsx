@@ -574,19 +574,41 @@ export default function WorkspacePage() {
     }
   }, [selectedProjectId, user?.id, emitStrokeEnd]);
 
-  const handleWhiteboardUndo = useCallback(async () => {
-    if (!selectedProjectId || strokes.length === 0) return;
+  // Undo a stroke by its ID (called from Whiteboard component's history system)
+  const handleStrokeUndo = useCallback(async (strokeId: string) => {
+    if (!selectedProjectId) return;
 
-    const lastStroke = strokes[strokes.length - 1];
-    setStrokes((prev) => prev.slice(0, -1));
-    emitStrokeUndo(lastStroke.id);
+    setStrokes((prev) => prev.filter((s) => s.id !== strokeId));
+    emitStrokeUndo(strokeId);
 
     try {
-      await api.deleteWhiteboardStroke(lastStroke.id);
+      await api.deleteWhiteboardStroke(strokeId);
     } catch (error) {
       console.error('Failed to undo stroke:', error);
     }
-  }, [selectedProjectId, strokes, emitStrokeUndo]);
+  }, [selectedProjectId, emitStrokeUndo]);
+
+  // Redo a stroke (re-create it)
+  const handleStrokeRedo = useCallback(async (stroke: WhiteboardStroke) => {
+    if (!selectedProjectId) return;
+
+    // Add stroke back to local state
+    setStrokes((prev) => [...prev, stroke]);
+
+    // Emit to other users
+    emitStrokeEnd(stroke.id, stroke.points, stroke.color, stroke.size);
+
+    // Save to database
+    try {
+      await api.createWhiteboardStroke(selectedProjectId, {
+        points: stroke.points,
+        color: stroke.color,
+        size: stroke.size,
+      });
+    } catch (error) {
+      console.error('Failed to redo stroke:', error);
+    }
+  }, [selectedProjectId, emitStrokeEnd]);
 
   const handleWhiteboardClear = useCallback(async () => {
     if (!selectedProjectId) return;
@@ -712,7 +734,8 @@ export default function WorkspacePage() {
               onStrokeStart={handleStrokeStart}
               onStrokePoint={handleStrokePoint}
               onStrokeEnd={handleStrokeEnd}
-              onUndo={handleWhiteboardUndo}
+              onStrokeUndo={handleStrokeUndo}
+              onStrokeRedo={handleStrokeRedo}
               onClear={handleWhiteboardClear}
               onCursorMove={handleWhiteboardCursorMove}
               onCursorLeave={emitCursorLeave}
