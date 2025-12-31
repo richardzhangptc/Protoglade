@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { TextElement } from './types';
 import { COLORS } from './constants';
 
@@ -10,7 +11,8 @@ interface TextFormatToolbarProps {
   onUpdate: (updates: Partial<TextElement>) => void;
 }
 
-const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
+// Keep this short so the size picker is never scrollable.
+const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32];
 
 export function TextFormatToolbar({
   element,
@@ -18,6 +20,22 @@ export function TextFormatToolbar({
   pan,
   onUpdate,
 }: TextFormatToolbarProps) {
+  const [fontSizeOpen, setFontSizeOpen] = useState(false);
+  const fontSizeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!fontSizeOpen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (fontSizeRef.current && !fontSizeRef.current.contains(target)) {
+        setFontSizeOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [fontSizeOpen]);
+
   // Position the toolbar above the text element
   const screenX = element.x * zoom + pan.x;
   const screenY = element.y * zoom + pan.y;
@@ -34,27 +52,41 @@ export function TextFormatToolbar({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Font size dropdown */}
-      <div className="flex items-center">
-        <select
-          value={element.fontSize}
-          onChange={(e) => onUpdate({ fontSize: Number(e.target.value) })}
-          className="h-7 w-11 pl-2 pr-5 text-xs rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] cursor-pointer hover:border-[var(--color-text-muted)] transition-colors appearance-none tabular-nums text-right"
+      {/* Font size picker (custom, avoids native <select> rendering quirks) */}
+      <div ref={fontSizeRef} className="relative">
+        <button
+          type="button"
+          className="h-7 px-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors flex items-center gap-1"
           title="Font size"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 6px center',
-            backgroundSize: '14px',
-          }}
+          onClick={() => setFontSizeOpen((v) => !v)}
         >
-          {FONT_SIZES.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
-        <span className="ml-1 text-xs text-[var(--color-text-muted)] select-none">px</span>
+          <span className="text-xs tabular-nums">{element.fontSize}px</span>
+          <svg className="w-3.5 h-3.5 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {fontSizeOpen && (
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-24 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg p-1 z-50">
+            {FONT_SIZES.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => {
+                  onUpdate({ fontSize: size });
+                  setFontSizeOpen(false);
+                }}
+                className={`w-full text-left px-2 py-1 rounded text-xs tabular-nums transition-colors ${
+                  element.fontSize === size
+                    ? 'bg-[var(--color-primary)] text-[var(--color-text)]'
+                    : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
+                }`}
+              >
+                {size}px
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Divider */}
@@ -155,7 +187,7 @@ export function TextFormatToolbar({
           {/* Dropdown */}
           <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 p-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
             <div className="flex flex-wrap gap-1 w-[100px]">
-              {COLORS.map((c) => (
+              {COLORS.slice(6).map((c) => (
                 <button
                   key={c}
                   onClick={() => onUpdate({ color: c })}
