@@ -578,10 +578,13 @@ export function Whiteboard({
     setShowPenOptions(false);
     setShowShapeOptions(false);
 
-    // Commit any text editing when clicking canvas
+    // If we're editing a text box, clicking the canvas should commit + exit edit mode.
+    // We call blur() explicitly because preventDefault() can stop the browser from
+    // naturally moving focus (and thus prevent the blur handler from firing).
     if (editingTextId) {
-      // The blur event on the text box will handle committing
-      return;
+      const active = document.activeElement as HTMLElement | null;
+      active?.blur?.();
+      setEditingTextId(null);
     }
 
     // Middle click or alt+click for panning

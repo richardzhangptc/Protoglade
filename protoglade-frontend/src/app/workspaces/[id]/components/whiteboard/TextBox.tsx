@@ -44,6 +44,19 @@ export function TextBox({
   const [initialSize, setInitialSize] = useState({ width: 0, height: 0 });
   const [previousContent, setPreviousContent] = useState(element.content);
 
+  // Prevent native browser text selection flicker while dragging/resizing.
+  useEffect(() => {
+    if (!isDragging && !isResizing) return;
+    const prevUserSelect = document.body.style.userSelect;
+    const prevWebkitUserSelect = (document.body.style as any).webkitUserSelect as string | undefined;
+    document.body.style.userSelect = 'none';
+    (document.body.style as any).webkitUserSelect = 'none';
+    return () => {
+      document.body.style.userSelect = prevUserSelect;
+      (document.body.style as any).webkitUserSelect = prevWebkitUserSelect ?? '';
+    };
+  }, [isDragging, isResizing]);
+
   // Focus the contenteditable when entering edit mode
   useEffect(() => {
     if (isEditing && contentRef.current) {
@@ -118,6 +131,8 @@ export function TextBox({
     if (isEditing) return;
     if ((e.target as HTMLElement).dataset.handle) return; // Don't start drag on resize handles
     
+    // Prevent native text selection while dragging.
+    e.preventDefault();
     e.stopPropagation();
     onSelect();
     
@@ -129,6 +144,8 @@ export function TextBox({
   // Handle resize start
   const handleResizeStart = useCallback((e: React.MouseEvent, handle: ResizeHandle) => {
     if (isEditing) return;
+    // Prevent native text selection while resizing.
+    e.preventDefault();
     e.stopPropagation();
     
     setIsResizing(true);
@@ -143,6 +160,10 @@ export function TextBox({
     if (!isDragging && !isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      // Clear any selection that may have started.
+      const sel = window.getSelection?.();
+      if (sel && sel.rangeCount > 0) sel.removeAllRanges();
+
       const dx = (e.clientX - dragStart.x) / zoom;
       const dy = (e.clientY - dragStart.y) / zoom;
 
@@ -250,7 +271,7 @@ export function TextBox({
   return (
     <div
       ref={containerRef}
-      className={`absolute ${isEditing ? '' : 'cursor-move'}`}
+      className={`absolute ${isEditing ? '' : 'cursor-move select-none'}`}
       style={{
         left: screenX,
         top: screenY,
