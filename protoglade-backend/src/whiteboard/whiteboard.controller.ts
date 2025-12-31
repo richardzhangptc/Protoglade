@@ -14,6 +14,8 @@ import { WhiteboardService } from './whiteboard.service';
 import { CreateStrokeDto } from './dto/create-stroke.dto';
 import { CreateShapeDto } from './dto/create-shape.dto';
 import { UpdateShapeDto } from './dto/update-shape.dto';
+import { CreateTextDto } from './dto/create-text.dto';
+import { UpdateTextDto } from './dto/update-text.dto';
 
 @Controller('whiteboard')
 @UseGuards(AuthGuard('jwt'))
@@ -73,5 +75,29 @@ export class WhiteboardController {
   @Delete('shapes/:id')
   deleteShape(@Req() req, @Param('id') id: string) {
     return this.whiteboardService.deleteShape(id, req.user.id);
+  }
+
+  // Texts
+  @Post(':projectId/texts')
+  createText(
+    @Req() req,
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateTextDto,
+  ) {
+    return this.whiteboardService.createText(projectId, req.user.id, dto);
+  }
+
+  @Put('texts/:id')
+  updateText(
+    @Req() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateTextDto,
+  ) {
+    return this.whiteboardService.updateText(id, req.user.id, dto);
+  }
+
+  @Delete('texts/:id')
+  deleteText(@Req() req, @Param('id') id: string) {
+    return this.whiteboardService.deleteText(id, req.user.id);
   }
 }

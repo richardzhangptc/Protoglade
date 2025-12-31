@@ -320,6 +320,7 @@ class ApiClient {
   async getWhiteboardElements(projectId: string) {
     return this.request<{
       shapes: Array<import('@/types').WhiteboardShape>;
+      texts: Array<import('@/types').WhiteboardText>;
     }>(`/whiteboard/${projectId}/elements`);
   }
 
@@ -356,6 +357,48 @@ class ApiClient {
 
   async deleteWhiteboardShape(id: string) {
     return this.request<{ message: string }>(`/whiteboard/shapes/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Whiteboard Texts
+  async createWhiteboardText(projectId: string, data: {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    content: string;
+    fontSize: number;
+    fontWeight: 'normal' | 'bold';
+    color: string;
+    align: 'left' | 'center' | 'right';
+  }) {
+    return this.request<import('@/types').WhiteboardText>(`/whiteboard/${projectId}/texts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateWhiteboardText(id: string, data: Partial<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    content: string;
+    fontSize: number;
+    fontWeight: 'normal' | 'bold';
+    color: string;
+    align: 'left' | 'center' | 'right';
+  }>) {
+    return this.request<import('@/types').WhiteboardText>(`/whiteboard/texts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteWhiteboardText(id: string) {
+    return this.request<{ message: string }>(`/whiteboard/texts/${id}`, {
       method: 'DELETE',
     });
   }

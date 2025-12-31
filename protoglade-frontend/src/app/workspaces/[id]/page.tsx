@@ -313,10 +313,11 @@ export default function WorkspacePage() {
         // Load whiteboard strokes and elements
         const [strokesData, elementsData] = await Promise.all([
           api.getWhiteboardStrokes(projectId),
-          api.getWhiteboardElements(projectId).catch(() => ({ shapes: [] })),
+          api.getWhiteboardElements(projectId).catch(() => ({ shapes: [], texts: [] })),
         ]);
         setStrokes(strokesData);
         setShapes(elementsData.shapes);
+        setTexts(elementsData.texts);
         setTasks([]);
         setColumns([]);
         setRemoteStrokes(new Map());
@@ -330,6 +331,7 @@ export default function WorkspacePage() {
         setColumns(columnsData.sort((a, b) => a.position - b.position));
         setStrokes([]);
         setShapes([]);
+        setTexts([]);
         setRemoteStrokes(new Map());
       }
     } catch (error) {
@@ -673,18 +675,49 @@ export default function WorkspacePage() {
 
   // Text element handlers (persistence to be implemented with backend)
   const handleTextCreate = useCallback(async (text: { id: string; x: number; y: number; width: number; height: number; content: string; fontSize: number; fontWeight: 'normal' | 'bold'; color: string; align: 'left' | 'center' | 'right' }) => {
-    // TODO: Persist to backend when API is available
-    console.log('Text created:', text);
-  }, []);
+    if (!selectedProjectId) return;
+    try {
+      await api.createWhiteboardText(selectedProjectId, {
+        id: text.id,
+        x: text.x,
+        y: text.y,
+        width: text.width,
+        height: text.height,
+        content: text.content,
+        fontSize: text.fontSize,
+        fontWeight: text.fontWeight,
+        color: text.color,
+        align: text.align,
+      });
+    } catch (error) {
+      console.error('Failed to create text:', error);
+    }
+  }, [selectedProjectId]);
 
   const handleTextUpdate = useCallback(async (text: { id: string; x: number; y: number; width: number; height: number; content: string; fontSize: number; fontWeight: 'normal' | 'bold'; color: string; align: 'left' | 'center' | 'right' }) => {
-    // TODO: Persist to backend when API is available
-    console.log('Text updated:', text);
+    try {
+      await api.updateWhiteboardText(text.id, {
+        x: text.x,
+        y: text.y,
+        width: text.width,
+        height: text.height,
+        content: text.content,
+        fontSize: text.fontSize,
+        fontWeight: text.fontWeight,
+        color: text.color,
+        align: text.align,
+      });
+    } catch (error) {
+      console.error('Failed to update text:', error);
+    }
   }, []);
 
   const handleTextDelete = useCallback(async (id: string) => {
-    // TODO: Persist to backend when API is available
-    console.log('Text deleted:', id);
+    try {
+      await api.deleteWhiteboardText(id);
+    } catch (error) {
+      console.error('Failed to delete text:', error);
+    }
   }, []);
 
   const handleWhiteboardCursorMove = useCallback((x: number, y: number) => {

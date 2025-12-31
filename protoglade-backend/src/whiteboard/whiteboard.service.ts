@@ -7,6 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateStrokeDto } from './dto/create-stroke.dto';
 import { CreateShapeDto } from './dto/create-shape.dto';
 import { UpdateShapeDto } from './dto/update-shape.dto';
+import { CreateTextDto } from './dto/create-text.dto';
+import { UpdateTextDto } from './dto/update-text.dto';
 
 @Injectable()
 export class WhiteboardService {
@@ -89,6 +91,7 @@ export class WhiteboardService {
     await Promise.all([
       this.prisma.whiteboardStroke.deleteMany({ where: { projectId } }),
       this.prisma.whiteboardShape.deleteMany({ where: { projectId } }),
+      this.prisma.whiteboardText.deleteMany({ where: { projectId } }),
     ]);
 
     return { message: 'Canvas cleared successfully' };
@@ -111,7 +114,12 @@ export class WhiteboardService {
       orderBy: { createdAt: 'asc' },
     });
 
-    return { shapes };
+    const texts = await this.prisma.whiteboardText.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return { shapes, texts };
   }
 
   // Shapes CRUD
@@ -177,6 +185,73 @@ export class WhiteboardService {
     });
 
     return { message: 'Shape deleted successfully' };
+  }
+
+  // Texts CRUD
+  async createText(projectId: string, userId: string, dto: CreateTextDto) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    await this.checkWorkspaceMembership(project.workspaceId, userId);
+
+    return this.prisma.whiteboardText.create({
+      data: {
+        id: dto.id,
+        x: dto.x,
+        y: dto.y,
+        width: dto.width,
+        height: dto.height,
+        content: dto.content ?? '',
+        fontSize: dto.fontSize ?? 16,
+        fontWeight: dto.fontWeight ?? 'normal',
+        color: dto.color ?? '#000000',
+        align: dto.align ?? 'left',
+        createdBy: userId,
+        projectId,
+      },
+    });
+  }
+
+  async updateText(id: string, userId: string, dto: UpdateTextDto) {
+    const text = await this.prisma.whiteboardText.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!text) {
+      throw new NotFoundException('Text not found');
+    }
+
+    await this.checkWorkspaceMembership(text.project.workspaceId, userId);
+
+    return this.prisma.whiteboardText.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
+  async deleteText(id: string, userId: string) {
+    const text = await this.prisma.whiteboardText.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!text) {
+      throw new NotFoundException('Text not found');
+    }
+
+    await this.checkWorkspaceMembership(text.project.workspaceId, userId);
+
+    await this.prisma.whiteboardText.delete({
+      where: { id },
+    });
+
+    return { message: 'Text deleted successfully' };
   }
 
   // Helper: Check if user is a member of the workspace

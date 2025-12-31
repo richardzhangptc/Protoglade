@@ -63,6 +63,7 @@ model Project {
   columns      KanbanColumn[]
   strokes      WhiteboardStroke[]
   shapes       WhiteboardShape[]
+  texts        WhiteboardText[]
 }
 
 model KanbanColumn {
@@ -175,6 +176,27 @@ model WhiteboardShape {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdBy   String   // User ID who created the shape
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model WhiteboardText {
+  id         String   @id @default(uuid())
+  x          Float
+  y          Float
+  width      Float    @default(200)
+  height     Float    @default(32)
+  content    String   @default("")
+  fontSize   Int      @default(16)
+  fontWeight String   @default("normal") // "normal" | "bold"
+  color      String   @default("#000000")
+  align      String   @default("left")   // "left" | "center" | "right"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String   // User ID who created the text
 
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
