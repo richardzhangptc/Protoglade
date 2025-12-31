@@ -4,7 +4,19 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
-import { Workspace, Project, Invitation, Task, KanbanColumn, WhiteboardStroke, WhiteboardPoint } from '@/types';
+import {
+  Workspace,
+  Project,
+  Invitation,
+  Task,
+  KanbanColumn,
+  WhiteboardStroke,
+  WhiteboardPoint,
+  WhiteboardStickyNote,
+  WhiteboardTextElement,
+  WhiteboardShape,
+  WhiteboardShapeType,
+} from '@/types';
 import {
   usePresence,
   TaskSyncEvent,
@@ -90,6 +102,9 @@ export default function WorkspacePage() {
   // Whiteboard state
   const [strokes, setStrokes] = useState<WhiteboardStroke[]>([]);
   const [remoteStrokes, setRemoteStrokes] = useState<Map<string, { id: string; points: WhiteboardPoint[]; color: string; size: number; userId: string }>>(new Map());
+  const [stickyNotes, setStickyNotes] = useState<WhiteboardStickyNote[]>([]);
+  const [textElements, setTextElements] = useState<WhiteboardTextElement[]>([]);
+  const [shapes, setShapes] = useState<WhiteboardShape[]>([]);
 
   // Refs
   const lastCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -297,9 +312,15 @@ export default function WorkspacePage() {
       setSelectedProject(projectData);
 
       if (projectData.type === 'whiteboard') {
-        // Load whiteboard strokes
-        const strokesData = await api.getWhiteboardStrokes(projectId);
+        // Load whiteboard strokes and elements
+        const [strokesData, elementsData] = await Promise.all([
+          api.getWhiteboardStrokes(projectId),
+          api.getWhiteboardElements(projectId).catch(() => ({ stickyNotes: [], textElements: [], shapes: [] })),
+        ]);
         setStrokes(strokesData);
+        setStickyNotes(elementsData.stickyNotes);
+        setTextElements(elementsData.textElements);
+        setShapes(elementsData.shapes);
         setTasks([]);
         setColumns([]);
         setRemoteStrokes(new Map());
@@ -312,6 +333,9 @@ export default function WorkspacePage() {
         setTasks(tasksData);
         setColumns(columnsData.sort((a, b) => a.position - b.position));
         setStrokes([]);
+        setStickyNotes([]);
+        setTextElements([]);
+        setShapes([]);
         setRemoteStrokes(new Map());
       }
     } catch (error) {
@@ -576,6 +600,9 @@ export default function WorkspacePage() {
     if (!selectedProjectId) return;
 
     setStrokes([]);
+    setStickyNotes([]);
+    setTextElements([]);
+    setShapes([]);
     setRemoteStrokes(new Map());
     emitCanvasClear();
 
@@ -585,6 +612,125 @@ export default function WorkspacePage() {
       console.error('Failed to clear canvas:', error);
     }
   }, [selectedProjectId, emitCanvasClear]);
+
+  // Whiteboard element handlers
+  const handleStickyNoteCreate = useCallback(async (note: { id: string; x: number; y: number; width: number; height: number; text: string; color: string }) => {
+    if (!selectedProjectId) return;
+    try {
+      await api.createWhiteboardStickyNote(selectedProjectId, {
+        x: note.x,
+        y: note.y,
+        width: note.width,
+        height: note.height,
+        text: note.text,
+        color: note.color,
+      });
+    } catch (error) {
+      console.error('Failed to create sticky note:', error);
+    }
+  }, [selectedProjectId]);
+
+  const handleStickyNoteUpdate = useCallback(async (note: { id: string; x: number; y: number; width: number; height: number; text: string; color: string }) => {
+    try {
+      await api.updateWhiteboardStickyNote(note.id, {
+        x: note.x,
+        y: note.y,
+        width: note.width,
+        height: note.height,
+        text: note.text,
+        color: note.color,
+      });
+    } catch (error) {
+      console.error('Failed to update sticky note:', error);
+    }
+  }, []);
+
+  const handleStickyNoteDelete = useCallback(async (id: string) => {
+    try {
+      await api.deleteWhiteboardStickyNote(id);
+    } catch (error) {
+      console.error('Failed to delete sticky note:', error);
+    }
+  }, []);
+
+  const handleTextElementCreate = useCallback(async (textEl: { id: string; x: number; y: number; text: string; fontSize: number; color: string }) => {
+    if (!selectedProjectId) return;
+    try {
+      await api.createWhiteboardTextElement(selectedProjectId, {
+        x: textEl.x,
+        y: textEl.y,
+        text: textEl.text,
+        fontSize: textEl.fontSize,
+        color: textEl.color,
+      });
+    } catch (error) {
+      console.error('Failed to create text element:', error);
+    }
+  }, [selectedProjectId]);
+
+  const handleTextElementUpdate = useCallback(async (textEl: { id: string; x: number; y: number; text: string; fontSize: number; color: string }) => {
+    try {
+      await api.updateWhiteboardTextElement(textEl.id, {
+        x: textEl.x,
+        y: textEl.y,
+        text: textEl.text,
+        fontSize: textEl.fontSize,
+        color: textEl.color,
+      });
+    } catch (error) {
+      console.error('Failed to update text element:', error);
+    }
+  }, []);
+
+  const handleTextElementDelete = useCallback(async (id: string) => {
+    try {
+      await api.deleteWhiteboardTextElement(id);
+    } catch (error) {
+      console.error('Failed to delete text element:', error);
+    }
+  }, []);
+
+  const handleShapeCreate = useCallback(async (shape: { id: string; type: WhiteboardShapeType; x: number; y: number; width: number; height: number; color: string; strokeWidth: number; filled: boolean }) => {
+    if (!selectedProjectId) return;
+    try {
+      await api.createWhiteboardShape(selectedProjectId, {
+        type: shape.type,
+        x: shape.x,
+        y: shape.y,
+        width: shape.width,
+        height: shape.height,
+        color: shape.color,
+        strokeWidth: shape.strokeWidth,
+        filled: shape.filled,
+      });
+    } catch (error) {
+      console.error('Failed to create shape:', error);
+    }
+  }, [selectedProjectId]);
+
+  const handleShapeUpdate = useCallback(async (shape: { id: string; x: number; y: number; width: number; height: number; color: string; strokeWidth: number; filled: boolean }) => {
+    try {
+      await api.updateWhiteboardShape(shape.id, {
+        x: shape.x,
+        y: shape.y,
+        width: shape.width,
+        height: shape.height,
+        color: shape.color,
+        strokeWidth: shape.strokeWidth,
+        filled: shape.filled,
+      });
+    } catch (error) {
+      console.error('Failed to update shape:', error);
+    }
+  }, []);
+
+  const handleShapeDelete = useCallback(async (id: string) => {
+    try {
+      await api.deleteWhiteboardShape(id);
+    } catch (error) {
+      console.error('Failed to delete shape:', error);
+    }
+  }, []);
 
   const handleWhiteboardCursorMove = useCallback((x: number, y: number) => {
     emitCursorMove({ x, y, isDragging: false, dragTaskId: null, dragTaskTitle: null });
@@ -648,6 +794,9 @@ export default function WorkspacePage() {
               remoteStrokes={remoteStrokes}
               remoteCursors={remoteCursors}
               sidebarCollapsed={sidebarCollapsed}
+              initialStickyNotes={stickyNotes}
+              initialTextElements={textElements}
+              initialShapes={shapes}
               onStrokeStart={handleStrokeStart}
               onStrokePoint={handleStrokePoint}
               onStrokeEnd={handleStrokeEnd}
@@ -655,6 +804,15 @@ export default function WorkspacePage() {
               onClear={handleWhiteboardClear}
               onCursorMove={handleWhiteboardCursorMove}
               onCursorLeave={emitCursorLeave}
+              onStickyNoteCreate={handleStickyNoteCreate}
+              onStickyNoteUpdate={handleStickyNoteUpdate}
+              onStickyNoteDelete={handleStickyNoteDelete}
+              onTextElementCreate={handleTextElementCreate}
+              onTextElementUpdate={handleTextElementUpdate}
+              onTextElementDelete={handleTextElementDelete}
+              onShapeCreate={handleShapeCreate}
+              onShapeUpdate={handleShapeUpdate}
+              onShapeDelete={handleShapeDelete}
             />
           )}
         </div>

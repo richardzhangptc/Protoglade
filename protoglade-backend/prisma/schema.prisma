@@ -59,9 +59,12 @@ model Project {
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  tasks       Task[]
-  columns     KanbanColumn[]
-  strokes     WhiteboardStroke[]
+  tasks        Task[]
+  columns      KanbanColumn[]
+  strokes      WhiteboardStroke[]
+  stickyNotes  WhiteboardStickyNote[]
+  textElements WhiteboardTextElement[]
+  shapes       WhiteboardShape[]
 }
 
 model KanbanColumn {
@@ -154,6 +157,61 @@ model WhiteboardStroke {
   size      Float    @default(2)
   createdAt DateTime @default(now())
   createdBy String   // User ID who created the stroke
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model WhiteboardStickyNote {
+  id        String   @id @default(uuid())
+  x         Float
+  y         Float
+  width     Float    @default(200)
+  height    Float    @default(150)
+  text      String   @default("")
+  color     String   @default("#fef08a")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String   // User ID who created the sticky note
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model WhiteboardTextElement {
+  id        String   @id @default(uuid())
+  x         Float
+  y         Float
+  text      String
+  fontSize  Int      @default(16)
+  color     String   @default("#000000")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String   // User ID who created the text element
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model WhiteboardShape {
+  id          String   @id @default(uuid())
+  type        String   // "rectangle", "circle", "line"
+  x           Float
+  y           Float
+  width       Float
+  height      Float
+  color       String   @default("#000000")
+  strokeWidth Float    @default(2)
+  filled      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String   // User ID who created the shape
 
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
