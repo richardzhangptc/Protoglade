@@ -49,7 +49,11 @@ export function TextFormatToolbar({
         top: screenY - 48,
         transform: 'translateX(-50%)',
       }}
-      onMouseDown={(e) => e.stopPropagation()}
+      // Prevent focus from leaving the contenteditable while interacting with the toolbar.
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Font size picker (custom, avoids native <select> rendering quirks) */}

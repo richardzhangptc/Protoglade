@@ -1025,8 +1025,8 @@ export function Whiteboard({
         />
       )}
 
-      {/* Text Format Toolbar - floating above selected text */}
-      {selectedElementId && selectedElementType === 'text' && !editingTextId && (() => {
+      {/* Text Format Toolbar - floating above selected text (also visible while editing) */}
+      {selectedElementId && selectedElementType === 'text' && (() => {
         const selectedText = texts.find((t) => t.id === selectedElementId);
         if (!selectedText) return null;
         return (
