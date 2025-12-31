@@ -4,34 +4,13 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   WhiteboardStroke,
   WhiteboardPoint,
-  WhiteboardStickyNote,
-  WhiteboardTextElement,
   WhiteboardShape,
   WhiteboardShapeType
 } from '@/types';
 
-type ToolType = 'select' | 'sticky' | 'text' | 'shapes' | 'pen';
+type ToolType = 'select' | 'shapes' | 'pen';
 
 // Local element types (without persistence metadata)
-interface StickyNote {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  color: string;
-}
-
-interface TextElement {
-  id: string;
-  x: number;
-  y: number;
-  text: string;
-  fontSize: number;
-  color: string;
-}
-
 interface ShapeElement {
   id: string;
   type: WhiteboardShapeType;
@@ -72,8 +51,6 @@ interface WhiteboardProps {
   remoteCursors: RemoteCursor[];
   sidebarCollapsed: boolean;
   // Initial element data for persistence
-  initialStickyNotes?: StickyNote[];
-  initialTextElements?: TextElement[];
   initialShapes?: ShapeElement[];
   onStrokeStart: (strokeId: string, point: WhiteboardPoint, color: string, size: number) => void;
   onStrokePoint: (strokeId: string, point: WhiteboardPoint) => void;
@@ -83,12 +60,6 @@ interface WhiteboardProps {
   onCursorMove: (x: number, y: number) => void;
   onCursorLeave: () => void;
   // Element persistence callbacks
-  onStickyNoteCreate?: (note: StickyNote) => void;
-  onStickyNoteUpdate?: (note: StickyNote) => void;
-  onStickyNoteDelete?: (id: string) => void;
-  onTextElementCreate?: (textEl: TextElement) => void;
-  onTextElementUpdate?: (textEl: TextElement) => void;
-  onTextElementDelete?: (id: string) => void;
   onShapeCreate?: (shape: ShapeElement) => void;
   onShapeUpdate?: (shape: ShapeElement) => void;
   onShapeDelete?: (id: string) => void;
@@ -104,8 +75,6 @@ export function Whiteboard({
   remoteStrokes,
   remoteCursors,
   sidebarCollapsed,
-  initialStickyNotes = [],
-  initialTextElements = [],
   initialShapes = [],
   onStrokeStart,
   onStrokePoint,
@@ -114,12 +83,6 @@ export function Whiteboard({
   onClear,
   onCursorMove,
   onCursorLeave,
-  onStickyNoteCreate,
-  onStickyNoteUpdate,
-  onStickyNoteDelete,
-  onTextElementCreate,
-  onTextElementUpdate,
-  onTextElementDelete,
   onShapeCreate,
   onShapeUpdate,
   onShapeDelete,
@@ -140,8 +103,6 @@ export function Whiteboard({
   const [showPenOptions, setShowPenOptions] = useState(false);
 
   // Element states - initialized from props
-  const [stickyNotes, setStickyNotes] = useState<StickyNote[]>(initialStickyNotes);
-  const [textElements, setTextElements] = useState<TextElement[]>(initialTextElements);
   const [shapes, setShapes] = useState<ShapeElement[]>(initialShapes);
 
   // Track if initial data has been set to avoid resetting on re-renders
@@ -149,13 +110,11 @@ export function Whiteboard({
 
   // Update state when initial data changes (e.g., after loading from backend)
   useEffect(() => {
-    if (!initializedRef.current && (initialStickyNotes.length > 0 || initialTextElements.length > 0 || initialShapes.length > 0)) {
-      setStickyNotes(initialStickyNotes);
-      setTextElements(initialTextElements);
+    if (!initializedRef.current && initialShapes.length > 0) {
       setShapes(initialShapes);
       initializedRef.current = true;
     }
-  }, [initialStickyNotes, initialTextElements, initialShapes]);
+  }, [initialShapes]);
 
   // Shape tool state
   const [selectedShapeType, setSelectedShapeType] = useState<WhiteboardShapeType>('rectangle');
@@ -164,7 +123,7 @@ export function Whiteboard({
 
   // Selection state
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [selectedElementType, setSelectedElementType] = useState<'sticky' | 'text' | 'shape' | null>(null);
+  const [selectedElementType, setSelectedElementType] = useState<'shape' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
@@ -173,25 +132,13 @@ export function Whiteboard({
   const [shapeStartPoint, setShapeStartPoint] = useState<WhiteboardPoint | null>(null);
   const [currentShape, setCurrentShape] = useState<ShapeElement | null>(null);
 
-  // Text editing state
-  const [editingTextId, setEditingTextId] = useState<string | null>(null);
-  const [editingStickyId, setEditingStickyId] = useState<string | null>(null);
-  const textInputRef = useRef<HTMLTextAreaElement>(null);
-  const stickyInputRef = useRef<HTMLTextAreaElement>(null);
-
   // Handle keyboard shortcuts for deleting selected elements
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementId && !editingTextId && !editingStickyId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedElementId) {
         if (selectedElementType === 'shape') {
           setShapes((prev) => prev.filter((s) => s.id !== selectedElementId));
           onShapeDelete?.(selectedElementId);
-        } else if (selectedElementType === 'text') {
-          setTextElements((prev) => prev.filter((t) => t.id !== selectedElementId));
-          onTextElementDelete?.(selectedElementId);
-        } else if (selectedElementType === 'sticky') {
-          setStickyNotes((prev) => prev.filter((s) => s.id !== selectedElementId));
-          onStickyNoteDelete?.(selectedElementId);
         }
         setSelectedElementId(null);
         setSelectedElementType(null);
@@ -200,14 +147,12 @@ export function Whiteboard({
       if (e.key === 'Escape') {
         setSelectedElementId(null);
         setSelectedElementType(null);
-        setEditingTextId(null);
-        setEditingStickyId(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElementId, selectedElementType, editingTextId, editingStickyId, onShapeDelete, onTextElementDelete, onStickyNoteDelete]);
+  }, [selectedElementId, selectedElementType, onShapeDelete]);
 
   // Resize canvas to fill container (full screen)
   // Whiteboard is now positioned absolutely and independent of sidebar
@@ -376,26 +321,6 @@ export function Whiteboard({
     }
   };
 
-  const drawTextElement = (
-    ctx: CanvasRenderingContext2D,
-    textEl: TextElement,
-    isSelected: boolean
-  ) => {
-    ctx.font = `${textEl.fontSize}px system-ui, sans-serif`;
-    ctx.fillStyle = textEl.color;
-    ctx.fillText(textEl.text, textEl.x, textEl.y + textEl.fontSize);
-
-    // Draw selection box
-    if (isSelected) {
-      const metrics = ctx.measureText(textEl.text);
-      ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(textEl.x - 4, textEl.y - 4, metrics.width + 8, textEl.fontSize + 8);
-      ctx.setLineDash([]);
-    }
-  };
-
   // Draw all elements
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -438,11 +363,6 @@ export function Whiteboard({
       drawStroke(ctx, currentStroke, color, size);
     }
 
-    // Draw text elements
-    textElements.forEach((textEl) => {
-      drawTextElement(ctx, textEl, textEl.id === selectedElementId);
-    });
-
     ctx.restore();
 
     // Draw remote cursors (in screen space, not canvas space)
@@ -476,7 +396,7 @@ export function Whiteboard({
 
       ctx.restore();
     });
-  }, [strokes, remoteStrokes, currentStroke, pan, zoom, color, size, remoteCursors, canvasSize, shapes, currentShape, textElements, selectedElementId]);
+  }, [strokes, remoteStrokes, currentStroke, pan, zoom, color, size, remoteCursors, canvasSize, shapes, currentShape, selectedElementId]);
 
   const getCanvasPoint = useCallback((e: React.PointerEvent): WhiteboardPoint => {
     const canvas = canvasRef.current;
@@ -508,8 +428,8 @@ export function Whiteboard({
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  // Hit testing for elements
-  const hitTestElement = useCallback((point: WhiteboardPoint): { id: string; type: 'sticky' | 'text' | 'shape' } | null => {
+  // Hit testing for shapes
+  const hitTestElement = useCallback((point: WhiteboardPoint): { id: string; type: 'shape' } | null => {
     // Check shapes (in reverse order, so topmost is checked first)
     for (let i = shapes.length - 1; i >= 0; i--) {
       const shape = shapes[i];
@@ -528,34 +448,8 @@ export function Whiteboard({
       }
     }
 
-    // Check text elements
-    for (let i = textElements.length - 1; i >= 0; i--) {
-      const textEl = textElements[i];
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.font = `${textEl.fontSize}px system-ui, sans-serif`;
-          const metrics = ctx.measureText(textEl.text);
-          if (point.x >= textEl.x && point.x <= textEl.x + metrics.width &&
-              point.y >= textEl.y && point.y <= textEl.y + textEl.fontSize) {
-            return { id: textEl.id, type: 'text' };
-          }
-        }
-      }
-    }
-
-    // Check sticky notes
-    for (let i = stickyNotes.length - 1; i >= 0; i--) {
-      const sticky = stickyNotes[i];
-      if (point.x >= sticky.x && point.x <= sticky.x + sticky.width &&
-          point.y >= sticky.y && point.y <= sticky.y + sticky.height) {
-        return { id: sticky.id, type: 'sticky' };
-      }
-    }
-
     return null;
-  }, [shapes, textElements, stickyNotes]);
+  }, [shapes]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -586,41 +480,6 @@ export function Whiteboard({
           setSelectedElementId(null);
           setSelectedElementType(null);
         }
-        break;
-      }
-
-      case 'sticky': {
-        const newSticky: StickyNote = {
-          id: crypto.randomUUID(),
-          x: point.x,
-          y: point.y,
-          width: 200,
-          height: 150,
-          text: '',
-          color: '#fef08a', // Yellow
-        };
-        setStickyNotes((prev) => [...prev, newSticky]);
-        setSelectedElementId(newSticky.id);
-        setSelectedElementType('sticky');
-        setEditingStickyId(newSticky.id);
-        onStickyNoteCreate?.(newSticky);
-        break;
-      }
-
-      case 'text': {
-        const newText: TextElement = {
-          id: crypto.randomUUID(),
-          x: point.x,
-          y: point.y,
-          text: 'Text',
-          fontSize: 16,
-          color: color,
-        };
-        setTextElements((prev) => [...prev, newText]);
-        setSelectedElementId(newText.id);
-        setSelectedElementType('text');
-        setEditingTextId(newText.id);
-        onTextElementCreate?.(newText);
         break;
       }
 
@@ -673,29 +532,15 @@ export function Whiteboard({
     const point = getCanvasPoint(e);
 
     // Handle dragging selected elements
-    if (isDragging && selectedElementId && selectedElementType) {
+    if (isDragging && selectedElementId && selectedElementType === 'shape') {
       const dx = point.x - dragOffset.x;
       const dy = point.y - dragOffset.y;
 
-      if (selectedElementType === 'shape') {
-        setShapes((prev) =>
-          prev.map((s) =>
-            s.id === selectedElementId ? { ...s, x: s.x + dx, y: s.y + dy } : s
-          )
-        );
-      } else if (selectedElementType === 'text') {
-        setTextElements((prev) =>
-          prev.map((t) =>
-            t.id === selectedElementId ? { ...t, x: t.x + dx, y: t.y + dy } : t
-          )
-        );
-      } else if (selectedElementType === 'sticky') {
-        setStickyNotes((prev) =>
-          prev.map((s) =>
-            s.id === selectedElementId ? { ...s, x: s.x + dx, y: s.y + dy } : s
-          )
-        );
-      }
+      setShapes((prev) =>
+        prev.map((s) =>
+          s.id === selectedElementId ? { ...s, x: s.x + dx, y: s.y + dy } : s
+        )
+      );
       setDragOffset({ x: point.x, y: point.y });
       return;
     }
@@ -729,17 +574,9 @@ export function Whiteboard({
     }
 
     // End dragging - persist position update
-    if (isDragging && selectedElementId && selectedElementType) {
-      if (selectedElementType === 'shape') {
-        const shape = shapes.find((s) => s.id === selectedElementId);
-        if (shape) onShapeUpdate?.(shape);
-      } else if (selectedElementType === 'text') {
-        const textEl = textElements.find((t) => t.id === selectedElementId);
-        if (textEl) onTextElementUpdate?.(textEl);
-      } else if (selectedElementType === 'sticky') {
-        const sticky = stickyNotes.find((s) => s.id === selectedElementId);
-        if (sticky) onStickyNoteUpdate?.(sticky);
-      }
+    if (isDragging && selectedElementId && selectedElementType === 'shape') {
+      const shape = shapes.find((s) => s.id === selectedElementId);
+      if (shape) onShapeUpdate?.(shape);
       setIsDragging(false);
       return;
     }
@@ -776,7 +613,7 @@ export function Whiteboard({
     setIsDrawing(false);
     setCurrentStroke([]);
     setCurrentStrokeId(null);
-  }, [isDrawing, isPanning, currentStroke, color, size, currentStrokeId, onStrokeEnd, isDragging, isDrawingShape, currentShape]);
+  }, [isDrawing, isPanning, currentStroke, color, size, currentStrokeId, onStrokeEnd, isDragging, isDrawingShape, currentShape, selectedElementId, selectedElementType, shapes, onShapeUpdate]);
 
   const handlePointerLeave = useCallback(() => {
     onCursorLeave();
@@ -808,8 +645,6 @@ export function Whiteboard({
     if (isPanning) return 'grabbing';
     switch (activeTool) {
       case 'select': return 'default';
-      case 'text': return 'text';
-      case 'sticky':
       case 'shapes':
       case 'pen':
       default: return 'crosshair';
@@ -849,34 +684,6 @@ export function Whiteboard({
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
-          </svg>
-        </button>
-
-        <button
-          onClick={() => handleToolClick('sticky')}
-          className={`p-2.5 rounded-xl transition-all ${
-            activeTool === 'sticky'
-              ? 'bg-[var(--color-primary)] text-[var(--color-text)]'
-              : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
-          }`}
-          title="Sticky Note"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-        </button>
-
-        <button
-          onClick={() => handleToolClick('text')}
-          className={`p-2.5 rounded-xl transition-all ${
-            activeTool === 'text'
-              ? 'bg-[var(--color-primary)] text-[var(--color-text)]'
-              : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
-          }`}
-          title="Text"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 6v2m16-2v2M9 6v12m0 0h6m-6 0H7m8 0h2" />
           </svg>
         </button>
 
@@ -926,8 +733,6 @@ export function Whiteboard({
         <button
           onClick={() => {
             // Clear local element states
-            setStickyNotes([]);
-            setTextElements([]);
             setShapes([]);
             setSelectedElementId(null);
             setSelectedElementType(null);
@@ -1113,114 +918,6 @@ export function Whiteboard({
           </div>
         </div>
       )}
-
-      {/* Sticky Notes - rendered as DOM elements for text editing */}
-      {stickyNotes.map((sticky) => {
-        const screenX = sticky.x * zoom + pan.x;
-        const screenY = sticky.y * zoom + pan.y;
-        const screenWidth = sticky.width * zoom;
-        const screenHeight = sticky.height * zoom;
-
-        return (
-          <div
-            key={sticky.id}
-            className={`absolute rounded-lg shadow-lg cursor-move ${
-              selectedElementId === sticky.id ? 'ring-2 ring-blue-500' : ''
-            }`}
-            style={{
-              left: screenX,
-              top: screenY,
-              width: screenWidth,
-              height: screenHeight,
-              backgroundColor: sticky.color,
-              transform: 'translate(0, 0)',
-            }}
-            onPointerDown={(e) => {
-              if (activeTool === 'select') {
-                e.stopPropagation();
-                const point = getCanvasPoint(e);
-                setSelectedElementId(sticky.id);
-                setSelectedElementType('sticky');
-                setIsDragging(true);
-                setDragOffset({ x: point.x, y: point.y });
-              }
-            }}
-            onDoubleClick={() => {
-              setEditingStickyId(sticky.id);
-            }}
-          >
-            {editingStickyId === sticky.id ? (
-              <textarea
-                ref={stickyInputRef}
-                className="w-full h-full p-2 bg-transparent resize-none outline-none text-sm"
-                value={sticky.text}
-                onChange={(e) => {
-                  setStickyNotes((prev) =>
-                    prev.map((s) =>
-                      s.id === sticky.id ? { ...s, text: e.target.value } : s
-                    )
-                  );
-                }}
-                onBlur={() => {
-                  setEditingStickyId(null);
-                  onStickyNoteUpdate?.(sticky);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    setEditingStickyId(null);
-                    onStickyNoteUpdate?.(sticky);
-                  }
-                }}
-                autoFocus
-              />
-            ) : (
-              <div className="w-full h-full p-2 text-sm overflow-hidden whitespace-pre-wrap">
-                {sticky.text || 'Double-click to edit'}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {/* Text Elements - rendered as DOM for editing */}
-      {textElements.map((textEl) => {
-        const screenX = textEl.x * zoom + pan.x;
-        const screenY = textEl.y * zoom + pan.y;
-
-        return editingTextId === textEl.id ? (
-          <textarea
-            key={textEl.id}
-            ref={textInputRef}
-            className="absolute bg-transparent resize-none outline-none border border-blue-500 rounded p-1"
-            style={{
-              left: screenX,
-              top: screenY,
-              fontSize: textEl.fontSize * zoom,
-              color: textEl.color,
-              minWidth: 100,
-            }}
-            value={textEl.text}
-            onChange={(e) => {
-              setTextElements((prev) =>
-                prev.map((t) =>
-                  t.id === textEl.id ? { ...t, text: e.target.value } : t
-                )
-              );
-            }}
-            onBlur={() => {
-              setEditingTextId(null);
-              onTextElementUpdate?.(textEl);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setEditingTextId(null);
-                onTextElementUpdate?.(textEl);
-              }
-            }}
-            autoFocus
-          />
-        ) : null;
-      })}
 
       {/* Help text */}
       <div className="absolute bottom-4 right-4 text-xs text-gray-400 pointer-events-none">

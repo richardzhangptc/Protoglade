@@ -316,79 +316,11 @@ class ApiClient {
     });
   }
 
-  // Whiteboard Elements (Sticky Notes, Text, Shapes)
+  // Whiteboard Elements (Shapes)
   async getWhiteboardElements(projectId: string) {
     return this.request<{
-      stickyNotes: Array<import('@/types').WhiteboardStickyNote>;
-      textElements: Array<import('@/types').WhiteboardTextElement>;
       shapes: Array<import('@/types').WhiteboardShape>;
     }>(`/whiteboard/${projectId}/elements`);
-  }
-
-  async createWhiteboardStickyNote(projectId: string, data: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    text: string;
-    color: string;
-  }) {
-    return this.request<import('@/types').WhiteboardStickyNote>(`/whiteboard/${projectId}/sticky-notes`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateWhiteboardStickyNote(id: string, data: Partial<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    text: string;
-    color: string;
-  }>) {
-    return this.request<import('@/types').WhiteboardStickyNote>(`/whiteboard/sticky-notes/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteWhiteboardStickyNote(id: string) {
-    return this.request<{ message: string }>(`/whiteboard/sticky-notes/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async createWhiteboardTextElement(projectId: string, data: {
-    x: number;
-    y: number;
-    text: string;
-    fontSize: number;
-    color: string;
-  }) {
-    return this.request<import('@/types').WhiteboardTextElement>(`/whiteboard/${projectId}/text-elements`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateWhiteboardTextElement(id: string, data: Partial<{
-    x: number;
-    y: number;
-    text: string;
-    fontSize: number;
-    color: string;
-  }>) {
-    return this.request<import('@/types').WhiteboardTextElement>(`/whiteboard/text-elements/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteWhiteboardTextElement(id: string) {
-    return this.request<{ message: string }>(`/whiteboard/text-elements/${id}`, {
-      method: 'DELETE',
-    });
   }
 
   async createWhiteboardShape(projectId: string, data: {

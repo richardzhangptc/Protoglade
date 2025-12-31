@@ -117,31 +117,6 @@ export interface WhiteboardStroke {
   projectId: string;
 }
 
-export interface WhiteboardStickyNote {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  color: string;
-  createdAt: string;
-  createdBy: string;
-  projectId: string;
-}
-
-export interface WhiteboardTextElement {
-  id: string;
-  x: number;
-  y: number;
-  text: string;
-  fontSize: number;
-  color: string;
-  createdAt: string;
-  createdBy: string;
-  projectId: string;
-}
-
 export type WhiteboardShapeType = 'rectangle' | 'circle' | 'line';
 
 export interface WhiteboardShape {
