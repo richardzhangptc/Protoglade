@@ -253,21 +253,6 @@ export function StickyNote({
               }
               newX = initialPos.x + (initialSize.width - newWidth);
               break;
-            case 's':
-              newHeight = Math.max(MIN_SIZE, initialSize.height + dy);
-              // Prevent vertical rectangle (height > width)
-              if (newHeight > newWidth) {
-                newHeight = newWidth;
-              }
-              break;
-            case 'n':
-              newHeight = Math.max(MIN_SIZE, initialSize.height - dy);
-              // Prevent vertical rectangle (height > width)
-              if (newHeight > newWidth) {
-                newHeight = newWidth;
-              }
-              newY = initialPos.y + (initialSize.height - newHeight);
-              break;
           }
         }
 
@@ -401,7 +386,7 @@ export function StickyNote({
       {/* Resize handles - only show when selected and not editing */}
       {isSelected && !isEditing && (
         <>
-          {(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const).map((handle) => {
+          {(['nw', 'ne', 'e', 'se', 'sw', 'w'] as const).map((handle) => {
             const handleSize = 8;
             let style: React.CSSProperties = {
               position: 'absolute',
@@ -418,9 +403,6 @@ export function StickyNote({
               case 'nw':
                 style = { ...style, top: -handleSize / 2, left: -handleSize / 2 };
                 break;
-              case 'n':
-                style = { ...style, top: -handleSize / 2, left: '50%', transform: 'translateX(-50%)' };
-                break;
               case 'ne':
                 style = { ...style, top: -handleSize / 2, right: -handleSize / 2 };
                 break;
@@ -429,9 +411,6 @@ export function StickyNote({
                 break;
               case 'se':
                 style = { ...style, bottom: -handleSize / 2, right: -handleSize / 2 };
-                break;
-              case 's':
-                style = { ...style, bottom: -handleSize / 2, left: '50%', transform: 'translateX(-50%)' };
                 break;
               case 'sw':
                 style = { ...style, bottom: -handleSize / 2, left: -handleSize / 2 };
