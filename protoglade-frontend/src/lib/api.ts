@@ -316,11 +316,12 @@ class ApiClient {
     });
   }
 
-  // Whiteboard Elements (Shapes)
+  // Whiteboard Elements (Shapes, Texts, Sticky Notes)
   async getWhiteboardElements(projectId: string) {
     return this.request<{
       shapes: Array<import('@/types').WhiteboardShape>;
       texts: Array<import('@/types').WhiteboardText>;
+      stickyNotes: Array<import('@/types').WhiteboardStickyNote>;
     }>(`/whiteboard/${projectId}/elements`);
   }
 
@@ -399,6 +400,42 @@ class ApiClient {
 
   async deleteWhiteboardText(id: string) {
     return this.request<{ message: string }>(`/whiteboard/texts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Whiteboard Sticky Notes
+  async createWhiteboardStickyNote(projectId: string, data: {
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    content: string;
+    color: string;
+  }) {
+    return this.request<import('@/types').WhiteboardStickyNote>(`/whiteboard/${projectId}/sticky-notes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateWhiteboardStickyNote(id: string, data: Partial<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    content: string;
+    color: string;
+  }>) {
+    return this.request<import('@/types').WhiteboardStickyNote>(`/whiteboard/sticky-notes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteWhiteboardStickyNote(id: string) {
+    return this.request<{ message: string }>(`/whiteboard/sticky-notes/${id}`, {
       method: 'DELETE',
     });
   }

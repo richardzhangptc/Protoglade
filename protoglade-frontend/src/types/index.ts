@@ -150,3 +150,16 @@ export interface WhiteboardText {
   projectId: string;
 }
 
+export interface WhiteboardStickyNote {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  color: string;
+  createdAt: string;
+  createdBy: string;
+  projectId: string;
+}
+

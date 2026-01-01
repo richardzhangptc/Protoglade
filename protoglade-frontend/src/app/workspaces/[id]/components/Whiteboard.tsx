@@ -7,8 +7,10 @@ import {
   ResizeHandle,
   ShapeElement,
   TextElement,
+  StickyNoteElement,
   RemoteStroke,
   RemoteCursor,
+  STICKY_COLORS,
 } from './whiteboard/types';
 import { drawStroke, drawShape, drawRemoteCursor } from './whiteboard/drawUtils';
 import {
@@ -23,6 +25,8 @@ import { PenOptionsPopover } from './whiteboard/PenOptionsPopover';
 import { ShapeOptionsPopover } from './whiteboard/ShapeOptionsPopover';
 import { TextBox } from './whiteboard/TextBox';
 import { TextFormatToolbar } from './whiteboard/TextFormatToolbar';
+import { StickyNote } from './whiteboard/StickyNote';
+import { StickyNoteFormatToolbar } from './whiteboard/StickyNoteFormatToolbar';
 
 interface WhiteboardProps {
   projectId: string;
@@ -46,6 +50,10 @@ interface WhiteboardProps {
   onTextCreate?: (text: TextElement) => void;
   onTextUpdate?: (text: TextElement) => void;
   onTextDelete?: (id: string) => void;
+  initialStickyNotes?: StickyNoteElement[];
+  onStickyCreate?: (sticky: StickyNoteElement) => void;
+  onStickyUpdate?: (sticky: StickyNoteElement) => void;
+  onStickyDelete?: (id: string) => void;
 }
 
 export function Whiteboard({
@@ -55,6 +63,7 @@ export function Whiteboard({
   sidebarCollapsed,
   initialShapes = [],
   initialTexts = [],
+  initialStickyNotes = [],
   onStrokeStart,
   onStrokePoint,
   onStrokeEnd,
@@ -69,6 +78,9 @@ export function Whiteboard({
   onTextCreate,
   onTextUpdate,
   onTextDelete,
+  onStickyCreate,
+  onStickyUpdate,
+  onStickyDelete,
 }: WhiteboardProps) {
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,6 +88,7 @@ export function Whiteboard({
   const lastPanPoint = useRef({ x: 0, y: 0 });
   const initializedRef = useRef(false);
   const textInitializedRef = useRef(false);
+  const stickyInitializedRef = useRef(false);
 
   // Canvas state
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -110,10 +123,11 @@ export function Whiteboard({
   // Element state
   const [shapes, setShapes] = useState<ShapeElement[]>(initialShapes);
   const [texts, setTexts] = useState<TextElement[]>(initialTexts);
+  const [stickyNotes, setStickyNotes] = useState<StickyNoteElement[]>(initialStickyNotes);
 
   // Selection state
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [selectedElementType, setSelectedElementType] = useState<'shape' | 'text' | null>(null);
+  const [selectedElementType, setSelectedElementType] = useState<'shape' | 'text' | 'sticky' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
@@ -121,6 +135,10 @@ export function Whiteboard({
   // Text editing state
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [textBeforeEdit, setTextBeforeEdit] = useState<string>('');
+
+  // Sticky note editing state
+  const [editingStickyId, setEditingStickyId] = useState<string | null>(null);
+  const [stickyBeforeEdit, setStickyBeforeEdit] = useState<string>('');
 
   // Resize state
   const [activeResizeHandle, setActiveResizeHandle] = useState<ResizeHandle>(null);
@@ -146,6 +164,14 @@ export function Whiteboard({
       textInitializedRef.current = true;
     }
   }, [initialTexts]);
+
+  // Initialize sticky notes from props
+  useEffect(() => {
+    if (!stickyInitializedRef.current && initialStickyNotes.length > 0) {
+      setStickyNotes(initialStickyNotes);
+      stickyInitializedRef.current = true;
+    }
+  }, [initialStickyNotes]);
 
   // Apply undo action
   const applyUndo = useCallback((action: HistoryAction) => {
@@ -214,8 +240,55 @@ export function Whiteboard({
           onTextUpdate?.({ ...editedText, content: action.fromContent });
         }
         break;
+      case 'sticky_create':
+        setStickyNotes((prev) => prev.filter((s) => s.id !== action.sticky.id));
+        onStickyDelete?.(action.sticky.id);
+        break;
+      case 'sticky_delete':
+        setStickyNotes((prev) => [...prev, action.sticky]);
+        onStickyCreate?.(action.sticky);
+        break;
+      case 'sticky_move':
+        setStickyNotes((prev) =>
+          prev.map((s) =>
+            s.id === action.stickyId ? { ...s, x: action.fromX, y: action.fromY } : s
+          )
+        );
+        const movedSticky = stickyNotes.find((s) => s.id === action.stickyId);
+        if (movedSticky) {
+          onStickyUpdate?.({ ...movedSticky, x: action.fromX, y: action.fromY });
+        }
+        break;
+      case 'sticky_resize':
+        setStickyNotes((prev) =>
+          prev.map((s) => (s.id === action.stickyId ? action.from : s))
+        );
+        onStickyUpdate?.(action.from);
+        break;
+      case 'sticky_edit':
+        setStickyNotes((prev) =>
+          prev.map((s) =>
+            s.id === action.stickyId ? { ...s, content: action.fromContent } : s
+          )
+        );
+        const editedSticky = stickyNotes.find((s) => s.id === action.stickyId);
+        if (editedSticky) {
+          onStickyUpdate?.({ ...editedSticky, content: action.fromContent });
+        }
+        break;
+      case 'sticky_color':
+        setStickyNotes((prev) =>
+          prev.map((s) =>
+            s.id === action.stickyId ? { ...s, color: action.fromColor } : s
+          )
+        );
+        const coloredSticky = stickyNotes.find((s) => s.id === action.stickyId);
+        if (coloredSticky) {
+          onStickyUpdate?.({ ...coloredSticky, color: action.fromColor });
+        }
+        break;
     }
-  }, [onStrokeUndo, onShapeDelete, onShapeCreate, onShapeUpdate, shapes, onTextDelete, onTextCreate, onTextUpdate, texts]);
+  }, [onStrokeUndo, onShapeDelete, onShapeCreate, onShapeUpdate, shapes, onTextDelete, onTextCreate, onTextUpdate, texts, onStickyDelete, onStickyCreate, onStickyUpdate, stickyNotes]);
 
   // Apply redo action
   const applyRedo = useCallback((action: HistoryAction) => {
@@ -284,8 +357,55 @@ export function Whiteboard({
           onTextUpdate?.({ ...editedText, content: action.toContent });
         }
         break;
+      case 'sticky_create':
+        setStickyNotes((prev) => [...prev, action.sticky]);
+        onStickyCreate?.(action.sticky);
+        break;
+      case 'sticky_delete':
+        setStickyNotes((prev) => prev.filter((s) => s.id !== action.sticky.id));
+        onStickyDelete?.(action.sticky.id);
+        break;
+      case 'sticky_move':
+        setStickyNotes((prev) =>
+          prev.map((s) =>
+            s.id === action.stickyId ? { ...s, x: action.toX, y: action.toY } : s
+          )
+        );
+        const movedSticky = stickyNotes.find((s) => s.id === action.stickyId);
+        if (movedSticky) {
+          onStickyUpdate?.({ ...movedSticky, x: action.toX, y: action.toY });
+        }
+        break;
+      case 'sticky_resize':
+        setStickyNotes((prev) =>
+          prev.map((s) => (s.id === action.stickyId ? action.to : s))
+        );
+        onStickyUpdate?.(action.to);
+        break;
+      case 'sticky_edit':
+        setStickyNotes((prev) =>
+          prev.map((s) =>
+            s.id === action.stickyId ? { ...s, content: action.toContent } : s
+          )
+        );
+        const editedSticky = stickyNotes.find((s) => s.id === action.stickyId);
+        if (editedSticky) {
+          onStickyUpdate?.({ ...editedSticky, content: action.toContent });
+        }
+        break;
+      case 'sticky_color':
+        setStickyNotes((prev) =>
+          prev.map((s) =>
+            s.id === action.stickyId ? { ...s, color: action.toColor } : s
+          )
+        );
+        const coloredSticky = stickyNotes.find((s) => s.id === action.stickyId);
+        if (coloredSticky) {
+          onStickyUpdate?.({ ...coloredSticky, color: action.toColor });
+        }
+        break;
     }
-  }, [onStrokeRedo, onShapeCreate, onShapeDelete, onShapeUpdate, shapes, onTextCreate, onTextDelete, onTextUpdate, texts]);
+  }, [onStrokeRedo, onShapeCreate, onShapeDelete, onShapeUpdate, shapes, onTextCreate, onTextDelete, onTextUpdate, texts, onStickyCreate, onStickyDelete, onStickyUpdate, stickyNotes]);
 
   // Handle undo
   const handleUndo = useCallback(() => {
@@ -306,8 +426,8 @@ export function Whiteboard({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle shortcuts if editing text
-      if (editingTextId) return;
+      // Don't handle shortcuts if editing text or sticky
+      if (editingTextId || editingStickyId) return;
 
       // Undo: Ctrl+Z or Cmd+Z
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -329,8 +449,8 @@ export function Whiteboard({
           const shapeToDelete = shapes.find((s) => s.id === selectedElementId);
           if (shapeToDelete) {
             pushAction({ type: 'shape_delete', shape: shapeToDelete });
-          setShapes((prev) => prev.filter((s) => s.id !== selectedElementId));
-          onShapeDelete?.(selectedElementId);
+            setShapes((prev) => prev.filter((s) => s.id !== selectedElementId));
+            onShapeDelete?.(selectedElementId);
           }
         } else if (selectedElementType === 'text') {
           const textToDelete = texts.find((t) => t.id === selectedElementId);
@@ -338,6 +458,13 @@ export function Whiteboard({
             pushAction({ type: 'text_delete', text: textToDelete });
             setTexts((prev) => prev.filter((t) => t.id !== selectedElementId));
             onTextDelete?.(selectedElementId);
+          }
+        } else if (selectedElementType === 'sticky') {
+          const stickyToDelete = stickyNotes.find((s) => s.id === selectedElementId);
+          if (stickyToDelete) {
+            pushAction({ type: 'sticky_delete', sticky: stickyToDelete });
+            setStickyNotes((prev) => prev.filter((s) => s.id !== selectedElementId));
+            onStickyDelete?.(selectedElementId);
           }
         }
         setSelectedElementId(null);
@@ -353,7 +480,7 @@ export function Whiteboard({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElementId, selectedElementType, onShapeDelete, onTextDelete, shapes, texts, handleUndo, handleRedo, pushAction, editingTextId]);
+  }, [selectedElementId, selectedElementType, onShapeDelete, onTextDelete, onStickyDelete, shapes, texts, stickyNotes, handleUndo, handleRedo, pushAction, editingTextId, editingStickyId]);
 
   // Canvas resize
   useEffect(() => {
@@ -568,6 +695,96 @@ export function Whiteboard({
     }
   }, [texts, onTextUpdate]);
 
+  // Sticky note handlers
+  const handleStickySelect = useCallback((stickyId: string) => {
+    setSelectedElementId(stickyId);
+    setSelectedElementType('sticky');
+    setEditingStickyId(null);
+  }, []);
+
+  const handleStickyStartEdit = useCallback((stickyId: string) => {
+    const sticky = stickyNotes.find((s) => s.id === stickyId);
+    if (sticky) {
+      setStickyBeforeEdit(sticky.content);
+      setEditingStickyId(stickyId);
+    }
+  }, [stickyNotes]);
+
+  const handleStickyEndEdit = useCallback((stickyId: string, newContent: string) => {
+    const sticky = stickyNotes.find((s) => s.id === stickyId);
+    if (sticky && newContent !== stickyBeforeEdit) {
+      pushAction({
+        type: 'sticky_edit',
+        stickyId,
+        fromContent: stickyBeforeEdit,
+        toContent: newContent,
+      });
+      setStickyNotes((prev) =>
+        prev.map((s) => (s.id === stickyId ? { ...s, content: newContent } : s))
+      );
+      onStickyUpdate?.({ ...sticky, content: newContent });
+    }
+    setEditingStickyId(null);
+  }, [stickyBeforeEdit, pushAction, onStickyUpdate, stickyNotes]);
+
+  const handleStickyCancelEdit = useCallback(() => {
+    setEditingStickyId(null);
+  }, []);
+
+  const handleStickyMove = useCallback((stickyId: string, x: number, y: number) => {
+    setStickyNotes((prev) =>
+      prev.map((s) => (s.id === stickyId ? { ...s, x, y } : s))
+    );
+  }, []);
+
+  const handleStickyMoveEnd = useCallback((stickyId: string) => {
+    const sticky = stickyNotes.find((s) => s.id === stickyId);
+    if (sticky && dragStartPosition && (sticky.x !== dragStartPosition.x || sticky.y !== dragStartPosition.y)) {
+      pushAction({
+        type: 'sticky_move',
+        stickyId,
+        fromX: dragStartPosition.x,
+        fromY: dragStartPosition.y,
+        toX: sticky.x,
+        toY: sticky.y,
+      });
+      onStickyUpdate?.(sticky);
+    }
+    setDragStartPosition(null);
+  }, [stickyNotes, dragStartPosition, pushAction, onStickyUpdate]);
+
+  const handleStickyResize = useCallback((stickyId: string, width: number, height: number) => {
+    setStickyNotes((prev) =>
+      prev.map((s) => (s.id === stickyId ? { ...s, width, height } : s))
+    );
+  }, []);
+
+  const handleStickyResizeEnd = useCallback((stickyId: string) => {
+    const sticky = stickyNotes.find((s) => s.id === stickyId);
+    if (sticky) {
+      onStickyUpdate?.(sticky);
+    }
+  }, [stickyNotes, onStickyUpdate]);
+
+  // Update sticky note color from floating toolbar
+  const handleStickyFormatUpdate = useCallback((stickyId: string, updates: Partial<StickyNoteElement>) => {
+    const sticky = stickyNotes.find((s) => s.id === stickyId);
+    if (sticky && updates.color && updates.color !== sticky.color) {
+      pushAction({
+        type: 'sticky_color',
+        stickyId,
+        fromColor: sticky.color,
+        toColor: updates.color,
+      });
+    }
+    setStickyNotes((prev) =>
+      prev.map((s) => (s.id === stickyId ? { ...s, ...updates } : s))
+    );
+    if (sticky) {
+      onStickyUpdate?.({ ...sticky, ...updates });
+    }
+  }, [stickyNotes, pushAction, onStickyUpdate]);
+
   // Pointer handlers
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -578,13 +795,14 @@ export function Whiteboard({
     setShowPenOptions(false);
     setShowShapeOptions(false);
 
-    // If we're editing a text box, clicking the canvas should commit + exit edit mode.
+    // If we're editing a text box or sticky note, clicking the canvas should commit + exit edit mode.
     // We call blur() explicitly because preventDefault() can stop the browser from
     // naturally moving focus (and thus prevent the blur handler from firing).
-    if (editingTextId) {
+    if (editingTextId || editingStickyId) {
       const active = document.activeElement as HTMLElement | null;
       active?.blur?.();
       setEditingTextId(null);
+      setEditingStickyId(null);
     }
 
     // Middle click or alt+click for panning
@@ -684,10 +902,32 @@ export function Whiteboard({
         setTextBeforeEdit('');
         break;
       }
+
+      case 'sticky': {
+        // Create new sticky note at click position
+        const newSticky: StickyNoteElement = {
+          id: crypto.randomUUID(),
+          x: point.x,
+          y: point.y,
+          width: 200,
+          height: 200,
+          content: '',
+          color: STICKY_COLORS[0], // Default yellow
+        };
+        setStickyNotes((prev) => [...prev, newSticky]);
+        pushAction({ type: 'sticky_create', sticky: newSticky });
+        onStickyCreate?.(newSticky);
+        // Select and start editing
+        setSelectedElementId(newSticky.id);
+        setSelectedElementType('sticky');
+        setEditingStickyId(newSticky.id);
+        setStickyBeforeEdit('');
+        break;
+      }
     }
 
     canvas.setPointerCapture(e.pointerId);
-  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, zoom, editingTextId, textFontSize, textFontWeight, textAlign, pushAction, onTextCreate]);
+  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, zoom, editingTextId, editingStickyId, textFontSize, textFontWeight, textAlign, pushAction, onTextCreate, onStickyCreate]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current;
@@ -925,9 +1165,11 @@ export function Whiteboard({
   const handleClear = useCallback(() => {
     setShapes([]);
     setTexts([]);
+    setStickyNotes([]);
     setSelectedElementId(null);
     setSelectedElementType(null);
     setEditingTextId(null);
+    setEditingStickyId(null);
     clearHistory();
     onClear();
   }, [onClear, clearHistory]);
@@ -939,6 +1181,7 @@ export function Whiteboard({
     switch (activeTool) {
       case 'select': return 'default';
       case 'text': return 'text';
+      case 'sticky': return 'crosshair';
       case 'shapes':
       case 'pen':
       default: return 'crosshair';
@@ -983,8 +1226,36 @@ export function Whiteboard({
               onResizeEnd={() => handleTextResizeEnd(text.id)}
             />
           </div>
-            ))}
+        ))}
+      </div>
+
+      {/* Sticky notes layer - rendered as DOM elements on top of canvas */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {stickyNotes.map((sticky) => (
+          <div key={sticky.id} className="pointer-events-auto">
+            <StickyNote
+              element={sticky}
+              isSelected={selectedElementId === sticky.id}
+              isEditing={editingStickyId === sticky.id}
+              zoom={zoom}
+              pan={pan}
+              onSelect={() => handleStickySelect(sticky.id)}
+              onStartEdit={() => handleStickyStartEdit(sticky.id)}
+              onEndEdit={(content) => handleStickyEndEdit(sticky.id, content)}
+              onCancelEdit={handleStickyCancelEdit}
+              onMove={(x, y) => {
+                if (!dragStartPosition) {
+                  setDragStartPosition({ x: sticky.x, y: sticky.y });
+                }
+                handleStickyMove(sticky.id, x, y);
+              }}
+              onMoveEnd={() => handleStickyMoveEnd(sticky.id)}
+              onResize={(w, h) => handleStickyResize(sticky.id, w, h)}
+              onResizeEnd={() => handleStickyResizeEnd(sticky.id)}
+            />
           </div>
+        ))}
+      </div>
 
       {/* Toolbar */}
       <WhiteboardToolbar
@@ -1038,6 +1309,20 @@ export function Whiteboard({
             zoom={zoom}
             pan={pan}
             onUpdate={(updates) => handleTextFormatUpdate(selectedElementId, updates)}
+          />
+        );
+      })()}
+
+      {/* Sticky Note Format Toolbar - floating above selected sticky note */}
+      {selectedElementId && selectedElementType === 'sticky' && (() => {
+        const selectedSticky = stickyNotes.find((s) => s.id === selectedElementId);
+        if (!selectedSticky) return null;
+        return (
+          <StickyNoteFormatToolbar
+            element={selectedSticky}
+            zoom={zoom}
+            pan={pan}
+            onUpdate={(updates) => handleStickyFormatUpdate(selectedElementId, updates)}
           />
         );
       })()}

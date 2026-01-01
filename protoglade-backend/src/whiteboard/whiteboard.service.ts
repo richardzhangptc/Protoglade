@@ -9,6 +9,8 @@ import { CreateShapeDto } from './dto/create-shape.dto';
 import { UpdateShapeDto } from './dto/update-shape.dto';
 import { CreateTextDto } from './dto/create-text.dto';
 import { UpdateTextDto } from './dto/update-text.dto';
+import { CreateStickyDto } from './dto/create-sticky.dto';
+import { UpdateStickyDto } from './dto/update-sticky.dto';
 
 @Injectable()
 export class WhiteboardService {
@@ -92,6 +94,7 @@ export class WhiteboardService {
       this.prisma.whiteboardStroke.deleteMany({ where: { projectId } }),
       this.prisma.whiteboardShape.deleteMany({ where: { projectId } }),
       this.prisma.whiteboardText.deleteMany({ where: { projectId } }),
+      this.prisma.whiteboardStickyNote.deleteMany({ where: { projectId } }),
     ]);
 
     return { message: 'Canvas cleared successfully' };
@@ -109,17 +112,22 @@ export class WhiteboardService {
 
     await this.checkWorkspaceMembership(project.workspaceId, userId);
 
-    const shapes = await this.prisma.whiteboardShape.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'asc' },
-    });
+    const [shapes, texts, stickyNotes] = await Promise.all([
+      this.prisma.whiteboardShape.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.whiteboardText.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.whiteboardStickyNote.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
 
-    const texts = await this.prisma.whiteboardText.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    return { shapes, texts };
+    return { shapes, texts, stickyNotes };
   }
 
   // Shapes CRUD
@@ -252,6 +260,70 @@ export class WhiteboardService {
     });
 
     return { message: 'Text deleted successfully' };
+  }
+
+  // Sticky Notes CRUD
+  async createStickyNote(projectId: string, userId: string, dto: CreateStickyDto) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    await this.checkWorkspaceMembership(project.workspaceId, userId);
+
+    return this.prisma.whiteboardStickyNote.create({
+      data: {
+        id: dto.id,
+        x: dto.x,
+        y: dto.y,
+        width: dto.width ?? 200,
+        height: dto.height ?? 200,
+        content: dto.content ?? '',
+        color: dto.color ?? '#fef08a',
+        createdBy: userId,
+        projectId,
+      },
+    });
+  }
+
+  async updateStickyNote(id: string, userId: string, dto: UpdateStickyDto) {
+    const sticky = await this.prisma.whiteboardStickyNote.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!sticky) {
+      throw new NotFoundException('Sticky note not found');
+    }
+
+    await this.checkWorkspaceMembership(sticky.project.workspaceId, userId);
+
+    return this.prisma.whiteboardStickyNote.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
+  async deleteStickyNote(id: string, userId: string) {
+    const sticky = await this.prisma.whiteboardStickyNote.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!sticky) {
+      throw new NotFoundException('Sticky note not found');
+    }
+
+    await this.checkWorkspaceMembership(sticky.project.workspaceId, userId);
+
+    await this.prisma.whiteboardStickyNote.delete({
+      where: { id },
+    });
+
+    return { message: 'Sticky note deleted successfully' };
   }
 
   // Helper: Check if user is a member of the workspace

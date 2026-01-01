@@ -94,6 +94,21 @@ export function WhiteboardToolbar({
         </svg>
       </button>
 
+      <button
+        onClick={() => onToolClick('sticky')}
+        className={`p-2.5 rounded-xl transition-all ${
+          activeTool === 'sticky'
+            ? 'bg-[var(--color-primary)] text-[var(--color-text)]'
+            : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
+        }`}
+        title="Sticky Note"
+      >
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+          <rect x="9" y="3" width="6" height="4" rx="1" strokeWidth={2} fill="#fef08a" stroke="currentColor" />
+        </svg>
+      </button>
+
       {/* Divider */}
       <div className="h-px w-full bg-[var(--color-border)] my-1" />
 

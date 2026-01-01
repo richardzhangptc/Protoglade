@@ -1,8 +1,18 @@
 import { WhiteboardShapeType, WhiteboardPoint } from '@/types';
 
-export type ToolType = 'select' | 'shapes' | 'pen' | 'text';
+export type ToolType = 'select' | 'shapes' | 'pen' | 'text' | 'sticky';
 
 export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | null;
+
+// Sticky note colors
+export const STICKY_COLORS = [
+  '#fef08a', // Yellow
+  '#fca5a5', // Red/Pink
+  '#86efac', // Green
+  '#93c5fd', // Blue
+  '#c4b5fd', // Purple
+  '#fdba74', // Orange
+];
 
 // Local element types (without persistence metadata)
 export interface ShapeElement {
@@ -28,6 +38,16 @@ export interface TextElement {
   fontWeight: 'normal' | 'bold';
   color: string;
   align: 'left' | 'center' | 'right';
+}
+
+export interface StickyNoteElement {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  color: string; // Background color
 }
 
 export interface RemoteStroke {

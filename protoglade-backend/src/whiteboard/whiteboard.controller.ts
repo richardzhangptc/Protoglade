@@ -16,6 +16,8 @@ import { CreateShapeDto } from './dto/create-shape.dto';
 import { UpdateShapeDto } from './dto/update-shape.dto';
 import { CreateTextDto } from './dto/create-text.dto';
 import { UpdateTextDto } from './dto/update-text.dto';
+import { CreateStickyDto } from './dto/create-sticky.dto';
+import { UpdateStickyDto } from './dto/update-sticky.dto';
 
 @Controller('whiteboard')
 @UseGuards(AuthGuard('jwt'))
@@ -99,5 +101,29 @@ export class WhiteboardController {
   @Delete('texts/:id')
   deleteText(@Req() req, @Param('id') id: string) {
     return this.whiteboardService.deleteText(id, req.user.id);
+  }
+
+  // Sticky Notes
+  @Post(':projectId/sticky-notes')
+  createStickyNote(
+    @Req() req,
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateStickyDto,
+  ) {
+    return this.whiteboardService.createStickyNote(projectId, req.user.id, dto);
+  }
+
+  @Put('sticky-notes/:id')
+  updateStickyNote(
+    @Req() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateStickyDto,
+  ) {
+    return this.whiteboardService.updateStickyNote(id, req.user.id, dto);
+  }
+
+  @Delete('sticky-notes/:id')
+  deleteStickyNote(@Req() req, @Param('id') id: string) {
+    return this.whiteboardService.deleteStickyNote(id, req.user.id);
   }
 }

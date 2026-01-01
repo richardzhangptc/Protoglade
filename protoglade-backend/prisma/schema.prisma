@@ -64,6 +64,7 @@ model Project {
   strokes      WhiteboardStroke[]
   shapes       WhiteboardShape[]
   texts        WhiteboardText[]
+  stickyNotes  WhiteboardStickyNote[]
 }
 
 model KanbanColumn {
@@ -197,6 +198,24 @@ model WhiteboardText {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   createdBy  String   // User ID who created the text
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model WhiteboardStickyNote {
+  id        String   @id @default(uuid())
+  x         Float
+  y         Float
+  width     Float    @default(200)
+  height    Float    @default(200)
+  content   String   @default("")
+  color     String   @default("#fef08a") // Default yellow
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String   // User ID who created the sticky note
 
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

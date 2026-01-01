@@ -15,6 +15,7 @@ import {
   WhiteboardShape,
   WhiteboardShapeType,
   WhiteboardText,
+  WhiteboardStickyNote,
 } from '@/types';
 import {
   usePresence,
@@ -103,6 +104,7 @@ export default function WorkspacePage() {
   const [remoteStrokes, setRemoteStrokes] = useState<Map<string, { id: string; points: WhiteboardPoint[]; color: string; size: number; userId: string }>>(new Map());
   const [shapes, setShapes] = useState<WhiteboardShape[]>([]);
   const [texts, setTexts] = useState<WhiteboardText[]>([]);
+  const [stickyNotes, setStickyNotes] = useState<WhiteboardStickyNote[]>([]);
 
   // Refs
   const lastCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -313,11 +315,12 @@ export default function WorkspacePage() {
         // Load whiteboard strokes and elements
         const [strokesData, elementsData] = await Promise.all([
           api.getWhiteboardStrokes(projectId),
-          api.getWhiteboardElements(projectId).catch(() => ({ shapes: [], texts: [] })),
+          api.getWhiteboardElements(projectId).catch(() => ({ shapes: [], texts: [], stickyNotes: [] })),
         ]);
         setStrokes(strokesData);
         setShapes(elementsData.shapes);
         setTexts(elementsData.texts);
+        setStickyNotes(elementsData.stickyNotes || []);
         setTasks([]);
         setColumns([]);
         setRemoteStrokes(new Map());
@@ -332,6 +335,7 @@ export default function WorkspacePage() {
         setStrokes([]);
         setShapes([]);
         setTexts([]);
+        setStickyNotes([]);
         setRemoteStrokes(new Map());
       }
     } catch (error) {
@@ -620,6 +624,7 @@ export default function WorkspacePage() {
     setStrokes([]);
     setShapes([]);
     setTexts([]);
+    setStickyNotes([]);
     setRemoteStrokes(new Map());
     emitCanvasClear();
 
@@ -720,6 +725,39 @@ export default function WorkspacePage() {
     }
   }, []);
 
+  // Sticky Note handlers
+  const handleStickyCreate = useCallback(async (sticky: { id: string; x: number; y: number; width: number; height: number; content: string; color: string }) => {
+    if (!selectedProjectId) return;
+    try {
+      await api.createWhiteboardStickyNote(selectedProjectId, sticky);
+    } catch (error) {
+      console.error('Failed to create sticky note:', error);
+    }
+  }, [selectedProjectId]);
+
+  const handleStickyUpdate = useCallback(async (sticky: { id: string; x: number; y: number; width: number; height: number; content: string; color: string }) => {
+    try {
+      await api.updateWhiteboardStickyNote(sticky.id, {
+        x: sticky.x,
+        y: sticky.y,
+        width: sticky.width,
+        height: sticky.height,
+        content: sticky.content,
+        color: sticky.color,
+      });
+    } catch (error) {
+      console.error('Failed to update sticky note:', error);
+    }
+  }, []);
+
+  const handleStickyDelete = useCallback(async (id: string) => {
+    try {
+      await api.deleteWhiteboardStickyNote(id);
+    } catch (error) {
+      console.error('Failed to delete sticky note:', error);
+    }
+  }, []);
+
   const handleWhiteboardCursorMove = useCallback((x: number, y: number) => {
     emitCursorMove({ x, y, isDragging: false, dragTaskId: null, dragTaskTitle: null });
   }, [emitCursorMove]);
@@ -784,6 +822,7 @@ export default function WorkspacePage() {
               sidebarCollapsed={sidebarCollapsed}
               initialShapes={shapes}
               initialTexts={texts}
+              initialStickyNotes={stickyNotes}
               onStrokeStart={handleStrokeStart}
               onStrokePoint={handleStrokePoint}
               onStrokeEnd={handleStrokeEnd}
@@ -798,6 +837,9 @@ export default function WorkspacePage() {
               onTextCreate={handleTextCreate}
               onTextUpdate={handleTextUpdate}
               onTextDelete={handleTextDelete}
+              onStickyCreate={handleStickyCreate}
+              onStickyUpdate={handleStickyUpdate}
+              onStickyDelete={handleStickyDelete}
             />
           )}
         </div>
