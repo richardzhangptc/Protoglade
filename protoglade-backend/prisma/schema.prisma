@@ -213,6 +213,7 @@ model WhiteboardStickyNote {
   height    Float    @default(200)
   content   String   @default("")
   color     String   @default("#fef08a") // Default yellow
+  fontSize  Int      @default(14)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String   // User ID who created the sticky note

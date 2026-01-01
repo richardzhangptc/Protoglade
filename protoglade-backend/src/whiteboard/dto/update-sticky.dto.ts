@@ -5,5 +5,6 @@ export class UpdateStickyDto {
   height?: number;
   content?: string;
   color?: string;
+  fontSize?: number;
 }
 

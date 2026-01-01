@@ -669,9 +669,9 @@ export function Whiteboard({
     setDragStartPosition(null);
   }, [texts, dragStartPosition, pushAction, onTextUpdate]);
 
-  const handleTextResize = useCallback((textId: string, width: number, height: number) => {
+  const handleTextResize = useCallback((textId: string, width: number, height: number, fontSize?: number) => {
     setTexts((prev) =>
-      prev.map((t) => (t.id === textId ? { ...t, width, height } : t))
+      prev.map((t) => (t.id === textId ? { ...t, width, height, ...(fontSize !== undefined && { fontSize }) } : t))
     );
   }, []);
 
@@ -753,9 +753,9 @@ export function Whiteboard({
     setDragStartPosition(null);
   }, [stickyNotes, dragStartPosition, pushAction, onStickyUpdate]);
 
-  const handleStickyResize = useCallback((stickyId: string, width: number, height: number) => {
+  const handleStickyResize = useCallback((stickyId: string, width: number, height: number, fontSize?: number) => {
     setStickyNotes((prev) =>
-      prev.map((s) => (s.id === stickyId ? { ...s, width, height } : s))
+      prev.map((s) => (s.id === stickyId ? { ...s, width, height, ...(fontSize !== undefined && { fontSize }) } : s))
     );
   }, []);
 
@@ -913,6 +913,7 @@ export function Whiteboard({
           height: 200,
           content: '',
           color: STICKY_COLORS[0], // Default yellow
+          fontSize: 14,
         };
         setStickyNotes((prev) => [...prev, newSticky]);
         pushAction({ type: 'sticky_create', sticky: newSticky });
@@ -1222,7 +1223,7 @@ export function Whiteboard({
                 handleTextMove(text.id, x, y);
               }}
               onMoveEnd={() => handleTextMoveEnd(text.id)}
-              onResize={(w, h) => handleTextResize(text.id, w, h)}
+              onResize={(w, h, fontSize) => handleTextResize(text.id, w, h, fontSize)}
               onResizeEnd={() => handleTextResizeEnd(text.id)}
             />
           </div>
@@ -1250,7 +1251,7 @@ export function Whiteboard({
                 handleStickyMove(sticky.id, x, y);
               }}
               onMoveEnd={() => handleStickyMoveEnd(sticky.id)}
-              onResize={(w, h) => handleStickyResize(sticky.id, w, h)}
+              onResize={(w, h, fontSize) => handleStickyResize(sticky.id, w, h, fontSize)}
               onResizeEnd={() => handleStickyResizeEnd(sticky.id)}
             />
           </div>

@@ -15,7 +15,7 @@ interface TextBoxProps {
   onCancelEdit: () => void;
   onMove: (x: number, y: number) => void;
   onMoveEnd: () => void;
-  onResize: (width: number, height: number) => void;
+  onResize: (width: number, height: number, fontSize?: number) => void;
   onResizeEnd: () => void;
 }
 
@@ -42,6 +42,7 @@ export function TextBox({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [initialPos, setInitialPos] = useState({ x: 0, y: 0 });
   const [initialSize, setInitialSize] = useState({ width: 0, height: 0 });
+  const [initialFontSize, setInitialFontSize] = useState(16);
   const [previousContent, setPreviousContent] = useState(element.content);
 
   // Prevent native browser text selection flicker while dragging/resizing.
@@ -147,13 +148,14 @@ export function TextBox({
     // Prevent native text selection while resizing.
     e.preventDefault();
     e.stopPropagation();
-    
+
     setIsResizing(true);
     setActiveHandle(handle);
     setDragStart({ x: e.clientX, y: e.clientY });
     setInitialSize({ width: element.width, height: element.height });
     setInitialPos({ x: element.x, y: element.y });
-  }, [isEditing, element.width, element.height, element.x, element.y]);
+    setInitialFontSize(element.fontSize);
+  }, [isEditing, element.width, element.height, element.x, element.y, element.fontSize]);
 
   // Handle mouse move for drag/resize
   useEffect(() => {
@@ -174,48 +176,88 @@ export function TextBox({
         let newHeight = initialSize.height;
         let newX = initialPos.x;
         let newY = initialPos.y;
+        let newFontSize: number | undefined = undefined;
 
-        switch (activeHandle) {
-          case 'e':
-            newWidth = Math.max(50, initialSize.width + dx);
-            break;
-          case 'w':
-            newWidth = Math.max(50, initialSize.width - dx);
-            newX = initialPos.x + dx;
-            break;
-          case 's':
-            newHeight = Math.max(24, initialSize.height + dy);
-            break;
-          case 'n':
-            newHeight = Math.max(24, initialSize.height - dy);
-            newY = initialPos.y + dy;
-            break;
-          case 'se':
-            newWidth = Math.max(50, initialSize.width + dx);
-            newHeight = Math.max(24, initialSize.height + dy);
-            break;
-          case 'sw':
-            newWidth = Math.max(50, initialSize.width - dx);
-            newHeight = Math.max(24, initialSize.height + dy);
-            newX = initialPos.x + dx;
-            break;
-          case 'ne':
-            newWidth = Math.max(50, initialSize.width + dx);
-            newHeight = Math.max(24, initialSize.height - dy);
-            newY = initialPos.y + dy;
-            break;
-          case 'nw':
-            newWidth = Math.max(50, initialSize.width - dx);
-            newHeight = Math.max(24, initialSize.height - dy);
-            newX = initialPos.x + dx;
-            newY = initialPos.y + dy;
-            break;
+        // Check if this is a diagonal/corner handle
+        const isDiagonal = ['nw', 'ne', 'se', 'sw'].includes(activeHandle);
+
+        if (isDiagonal) {
+          // Diagonal handles: maintain aspect ratio (only change size, not shape)
+          const aspectRatio = initialSize.width / initialSize.height;
+          const diagonalDelta = (dx + dy) / 2;
+
+          let scale: number;
+          switch (activeHandle) {
+            case 'se':
+              scale = Math.max(50 / initialSize.width, 1 + diagonalDelta / initialSize.width);
+              break;
+            case 'nw':
+              scale = Math.max(50 / initialSize.width, 1 - diagonalDelta / initialSize.width);
+              break;
+            case 'ne':
+              scale = Math.max(50 / initialSize.width, 1 + (dx - dy) / 2 / initialSize.width);
+              break;
+            case 'sw':
+              scale = Math.max(50 / initialSize.width, 1 + (-dx + dy) / 2 / initialSize.width);
+              break;
+            default:
+              scale = 1;
+          }
+
+          newWidth = initialSize.width * scale;
+          newHeight = initialSize.height * scale;
+
+          // Ensure minimum sizes
+          if (newWidth < 50) {
+            newWidth = 50;
+            newHeight = 50 / aspectRatio;
+          }
+          if (newHeight < 24) {
+            newHeight = 24;
+            newWidth = 24 * aspectRatio;
+          }
+
+          // Scale font size proportionally
+          newFontSize = Math.round(initialFontSize * scale);
+          newFontSize = Math.max(8, Math.min(72, newFontSize));
+
+          // Adjust position for corners that move the origin
+          switch (activeHandle) {
+            case 'nw':
+              newX = initialPos.x + initialSize.width - newWidth;
+              newY = initialPos.y + initialSize.height - newHeight;
+              break;
+            case 'ne':
+              newY = initialPos.y + initialSize.height - newHeight;
+              break;
+            case 'sw':
+              newX = initialPos.x + initialSize.width - newWidth;
+              break;
+          }
+        } else {
+          // Edge handles: allow independent width/height changes
+          switch (activeHandle) {
+            case 'e':
+              newWidth = Math.max(50, initialSize.width + dx);
+              break;
+            case 'w':
+              newWidth = Math.max(50, initialSize.width - dx);
+              newX = initialPos.x + (initialSize.width - newWidth);
+              break;
+            case 's':
+              newHeight = Math.max(24, initialSize.height + dy);
+              break;
+            case 'n':
+              newHeight = Math.max(24, initialSize.height - dy);
+              newY = initialPos.y + (initialSize.height - newHeight);
+              break;
+          }
         }
 
         if (newX !== element.x || newY !== element.y) {
           onMove(newX, newY);
         }
-        onResize(newWidth, newHeight);
+        onResize(newWidth, newHeight, newFontSize);
       }
     };
 
@@ -237,7 +279,7 @@ export function TextBox({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, dragStart, initialPos, initialSize, zoom, activeHandle, onMove, onMoveEnd, onResize, onResizeEnd, element.x, element.y]);
+  }, [isDragging, isResizing, dragStart, initialPos, initialSize, initialFontSize, zoom, activeHandle, onMove, onMoveEnd, onResize, onResizeEnd, element.x, element.y]);
 
   // Calculate screen position
   const screenX = element.x * zoom + pan.x;

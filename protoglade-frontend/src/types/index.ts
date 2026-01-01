@@ -158,6 +158,7 @@ export interface WhiteboardStickyNote {
   height: number;
   content: string;
   color: string;
+  fontSize: number;
   createdAt: string;
   createdBy: string;
   projectId: string;

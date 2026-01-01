@@ -48,6 +48,7 @@ export interface StickyNoteElement {
   height: number;
   content: string;
   color: string; // Background color
+  fontSize: number; // Font size in pixels
 }
 
 export interface RemoteStroke {

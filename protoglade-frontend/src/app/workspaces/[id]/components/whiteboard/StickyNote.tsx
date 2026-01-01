@@ -15,12 +15,13 @@ interface StickyNoteProps {
   onCancelEdit: () => void;
   onMove: (x: number, y: number) => void;
   onMoveEnd: () => void;
-  onResize: (width: number, height: number) => void;
+  onResize: (width: number, height: number, fontSize?: number) => void;
   onResizeEnd: () => void;
 }
 
 const MIN_SIZE = 100;
 const MAX_ASPECT_RATIO = 2; // Maximum width:height ratio (horizontal rectangle limit)
+const DEFAULT_FONT_SIZE = 14;
 
 export function StickyNote({
   element,
@@ -45,6 +46,7 @@ export function StickyNote({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [initialPos, setInitialPos] = useState({ x: 0, y: 0 });
   const [initialSize, setInitialSize] = useState({ width: 0, height: 0 });
+  const [initialFontSize, setInitialFontSize] = useState(DEFAULT_FONT_SIZE);
   const [previousContent, setPreviousContent] = useState(element.content);
 
   // Focus the contenteditable when entering edit mode
@@ -132,13 +134,14 @@ export function StickyNote({
     if (isEditing) return;
     e.preventDefault();
     e.stopPropagation();
-    
+
     setIsResizing(true);
     setActiveHandle(handle);
     setDragStart({ x: e.clientX, y: e.clientY });
     setInitialSize({ width: element.width, height: element.height });
     setInitialPos({ x: element.x, y: element.y });
-  }, [isEditing, element.width, element.height, element.x, element.y]);
+    setInitialFontSize(element.fontSize || DEFAULT_FONT_SIZE);
+  }, [isEditing, element.width, element.height, element.x, element.y, element.fontSize]);
 
   // Handle mouse move for drag/resize
   useEffect(() => {
@@ -162,6 +165,7 @@ export function StickyNote({
         let newHeight = initialSize.height;
         let newX = initialPos.x;
         let newY = initialPos.y;
+        let newFontSize: number | undefined = undefined;
 
         // Diagonal handles: maintain aspect ratio (only change size, not shape)
         const isDiagonal = ['nw', 'ne', 'se', 'sw'].includes(activeHandle);
@@ -213,6 +217,13 @@ export function StickyNote({
             newHeight = newWidth;
           }
 
+          // Calculate the actual scale after constraints
+          const finalScale = newWidth / initialSize.width;
+          // Scale font size proportionally for diagonal resizes
+          newFontSize = Math.round(initialFontSize * finalScale);
+          // Clamp font size to reasonable bounds
+          newFontSize = Math.max(8, Math.min(72, newFontSize));
+
           // Adjust position for corners that move the origin
           switch (activeHandle) {
             case 'nw':
@@ -259,7 +270,7 @@ export function StickyNote({
         if (newX !== element.x || newY !== element.y) {
           onMove(newX, newY);
         }
-        onResize(newWidth, newHeight);
+        onResize(newWidth, newHeight, newFontSize);
       }
     };
 
@@ -286,7 +297,7 @@ export function StickyNote({
       document.body.style.userSelect = '';
       (document.body.style as unknown as Record<string, string>).webkitUserSelect = '';
     };
-  }, [isDragging, isResizing, dragStart, initialPos, initialSize, zoom, activeHandle, onMove, onMoveEnd, onResize, onResizeEnd, element.x, element.y]);
+  }, [isDragging, isResizing, dragStart, initialPos, initialSize, initialFontSize, zoom, activeHandle, onMove, onMoveEnd, onResize, onResizeEnd, element.x, element.y]);
 
   // Calculate screen position
   const screenX = element.x * zoom + pan.x;
@@ -347,7 +358,7 @@ export function StickyNote({
         <div
           className="absolute inset-0 p-3 overflow-auto"
           style={{
-            fontSize: 14 * zoom,
+            fontSize: (element.fontSize || DEFAULT_FONT_SIZE) * zoom,
             color: '#1f2937',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
@@ -372,7 +383,7 @@ export function StickyNote({
           onBlur={handleBlur}
           className="absolute inset-0 p-3 outline-none overflow-auto"
           style={{
-            fontSize: 14 * zoom,
+            fontSize: (element.fontSize || DEFAULT_FONT_SIZE) * zoom,
             color: '#1f2937',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
