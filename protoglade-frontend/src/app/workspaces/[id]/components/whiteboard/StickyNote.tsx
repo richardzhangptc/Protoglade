@@ -20,6 +20,7 @@ interface StickyNoteProps {
 }
 
 const MIN_SIZE = 100;
+const MAX_ASPECT_RATIO = 2; // Maximum width:height ratio (horizontal rectangle limit)
 
 export function StickyNote({
   element,
@@ -162,41 +163,112 @@ export function StickyNote({
         let newX = initialPos.x;
         let newY = initialPos.y;
 
-        switch (activeHandle) {
-          case 'e':
-            newWidth = Math.max(MIN_SIZE, initialSize.width + dx);
-            break;
-          case 'w':
-            newWidth = Math.max(MIN_SIZE, initialSize.width - dx);
-            newX = initialPos.x + (initialSize.width - newWidth);
-            break;
-          case 's':
-            newHeight = Math.max(MIN_SIZE, initialSize.height + dy);
-            break;
-          case 'n':
-            newHeight = Math.max(MIN_SIZE, initialSize.height - dy);
-            newY = initialPos.y + (initialSize.height - newHeight);
-            break;
-          case 'se':
-            newWidth = Math.max(MIN_SIZE, initialSize.width + dx);
-            newHeight = Math.max(MIN_SIZE, initialSize.height + dy);
-            break;
-          case 'sw':
-            newWidth = Math.max(MIN_SIZE, initialSize.width - dx);
-            newHeight = Math.max(MIN_SIZE, initialSize.height + dy);
-            newX = initialPos.x + (initialSize.width - newWidth);
-            break;
-          case 'ne':
-            newWidth = Math.max(MIN_SIZE, initialSize.width + dx);
-            newHeight = Math.max(MIN_SIZE, initialSize.height - dy);
-            newY = initialPos.y + (initialSize.height - newHeight);
-            break;
-          case 'nw':
-            newWidth = Math.max(MIN_SIZE, initialSize.width - dx);
-            newHeight = Math.max(MIN_SIZE, initialSize.height - dy);
-            newX = initialPos.x + (initialSize.width - newWidth);
-            newY = initialPos.y + (initialSize.height - newHeight);
-            break;
+        // Diagonal handles: maintain aspect ratio (only change size, not shape)
+        const isDiagonal = ['nw', 'ne', 'se', 'sw'].includes(activeHandle);
+
+        if (isDiagonal) {
+          // Calculate scale based on the dominant axis movement
+          const aspectRatio = initialSize.width / initialSize.height;
+          // Use the diagonal distance for uniform scaling
+          const diagonalDelta = (dx + dy) / 2;
+
+          // For corners, determine direction based on handle position
+          let scale: number;
+          switch (activeHandle) {
+            case 'se':
+              scale = Math.max(MIN_SIZE / initialSize.width, 1 + diagonalDelta / initialSize.width);
+              break;
+            case 'nw':
+              scale = Math.max(MIN_SIZE / initialSize.width, 1 - diagonalDelta / initialSize.width);
+              break;
+            case 'ne':
+              scale = Math.max(MIN_SIZE / initialSize.width, 1 + (dx - dy) / 2 / initialSize.width);
+              break;
+            case 'sw':
+              scale = Math.max(MIN_SIZE / initialSize.width, 1 + (-dx + dy) / 2 / initialSize.width);
+              break;
+            default:
+              scale = 1;
+          }
+
+          newWidth = initialSize.width * scale;
+          newHeight = initialSize.height * scale;
+
+          // Ensure minimum size
+          if (newWidth < MIN_SIZE) {
+            newWidth = MIN_SIZE;
+            newHeight = MIN_SIZE / aspectRatio;
+          }
+          if (newHeight < MIN_SIZE) {
+            newHeight = MIN_SIZE;
+            newWidth = MIN_SIZE * aspectRatio;
+          }
+
+          // Apply max aspect ratio constraint
+          if (newWidth / newHeight > MAX_ASPECT_RATIO) {
+            newWidth = newHeight * MAX_ASPECT_RATIO;
+          }
+          // Prevent vertical rectangles (height > width)
+          if (newHeight > newWidth) {
+            newHeight = newWidth;
+          }
+
+          // Adjust position for corners that move the origin
+          switch (activeHandle) {
+            case 'nw':
+              newX = initialPos.x + initialSize.width - newWidth;
+              newY = initialPos.y + initialSize.height - newHeight;
+              break;
+            case 'ne':
+              newY = initialPos.y + initialSize.height - newHeight;
+              break;
+            case 'sw':
+              newX = initialPos.x + initialSize.width - newWidth;
+              break;
+            // 'se' doesn't need position adjustment
+          }
+        } else {
+          // Edge handles: allow independent width/height changes with constraints
+          switch (activeHandle) {
+            case 'e':
+              newWidth = Math.max(MIN_SIZE, initialSize.width + dx);
+              // Limit max aspect ratio
+              if (newWidth / newHeight > MAX_ASPECT_RATIO) {
+                newWidth = newHeight * MAX_ASPECT_RATIO;
+              }
+              // Prevent vertical rectangle (width can't go below height)
+              if (newWidth < newHeight) {
+                newWidth = newHeight;
+              }
+              break;
+            case 'w':
+              newWidth = Math.max(MIN_SIZE, initialSize.width - dx);
+              // Limit max aspect ratio
+              if (newWidth / newHeight > MAX_ASPECT_RATIO) {
+                newWidth = newHeight * MAX_ASPECT_RATIO;
+              }
+              // Prevent vertical rectangle (width can't go below height)
+              if (newWidth < newHeight) {
+                newWidth = newHeight;
+              }
+              newX = initialPos.x + (initialSize.width - newWidth);
+              break;
+            case 's':
+              newHeight = Math.max(MIN_SIZE, initialSize.height + dy);
+              // Prevent vertical rectangle (height > width)
+              if (newHeight > newWidth) {
+                newHeight = newWidth;
+              }
+              break;
+            case 'n':
+              newHeight = Math.max(MIN_SIZE, initialSize.height - dy);
+              // Prevent vertical rectangle (height > width)
+              if (newHeight > newWidth) {
+                newHeight = newWidth;
+              }
+              newY = initialPos.y + (initialSize.height - newHeight);
+              break;
+          }
         }
 
         if (newX !== element.x || newY !== element.y) {
