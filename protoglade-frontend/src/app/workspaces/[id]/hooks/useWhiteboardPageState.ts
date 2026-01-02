@@ -5,6 +5,7 @@ import {
   WhiteboardShape,
   WhiteboardText,
   WhiteboardStickyNote,
+  WhiteboardImage,
 } from '@/types';
 
 export interface RemoteStroke {
@@ -21,12 +22,14 @@ export function useWhiteboardPageState() {
   const [shapes, setShapes] = useState<WhiteboardShape[]>([]);
   const [texts, setTexts] = useState<WhiteboardText[]>([]);
   const [stickyNotes, setStickyNotes] = useState<WhiteboardStickyNote[]>([]);
+  const [images, setImages] = useState<WhiteboardImage[]>([]);
 
   const clearWhiteboardState = () => {
     setStrokes([]);
     setShapes([]);
     setTexts([]);
     setStickyNotes([]);
+    setImages([]);
     setRemoteStrokes(new Map());
   };
 
@@ -41,6 +44,8 @@ export function useWhiteboardPageState() {
     setTexts,
     stickyNotes,
     setStickyNotes,
+    images,
+    setImages,
     clearWhiteboardState,
   };
 }

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { WhiteboardStroke } from '@/types';
-import { ShapeElement, TextElement, StickyNoteElement } from '../types';
+import { ShapeElement, TextElement, StickyNoteElement, ImageElement } from '../types';
 import { HistoryAction } from '../useHistory';
 
 export interface HistoryActionsCallbacks {
@@ -15,15 +15,20 @@ export interface HistoryActionsCallbacks {
   onStickyCreate?: (sticky: StickyNoteElement) => void;
   onStickyUpdate?: (sticky: StickyNoteElement) => void;
   onStickyDelete?: (id: string) => void;
+  onImageCreate?: (image: ImageElement) => void;
+  onImageUpdate?: (image: ImageElement) => void;
+  onImageDelete?: (id: string) => void;
 }
 
 export interface HistoryActionsState {
   shapes: ShapeElement[];
   texts: TextElement[];
   stickyNotes: StickyNoteElement[];
+  images: ImageElement[];
   setShapes: React.Dispatch<React.SetStateAction<ShapeElement[]>>;
   setTexts: React.Dispatch<React.SetStateAction<TextElement[]>>;
   setStickyNotes: React.Dispatch<React.SetStateAction<StickyNoteElement[]>>;
+  setImages: React.Dispatch<React.SetStateAction<ImageElement[]>>;
 }
 
 export interface UseHistoryActionsOptions {
@@ -51,9 +56,12 @@ export function useHistoryActions({
     onStickyCreate,
     onStickyUpdate,
     onStickyDelete,
+    onImageCreate,
+    onImageUpdate,
+    onImageDelete,
   } = callbacks;
 
-  const { shapes, texts, stickyNotes, setShapes, setTexts, setStickyNotes } = state;
+  const { shapes, texts, stickyNotes, images, setShapes, setTexts, setStickyNotes, setImages } = state;
 
   const applyUndo = useCallback((action: HistoryAction) => {
     switch (action.type) {
@@ -168,8 +176,33 @@ export function useHistoryActions({
           onStickyUpdate?.({ ...coloredSticky, color: action.fromColor });
         }
         break;
+      case 'image_create':
+        setImages((prev) => prev.filter((i) => i.id !== action.image.id));
+        onImageDelete?.(action.image.id);
+        break;
+      case 'image_delete':
+        setImages((prev) => [...prev, action.image]);
+        onImageCreate?.(action.image);
+        break;
+      case 'image_move':
+        setImages((prev) =>
+          prev.map((i) =>
+            i.id === action.imageId ? { ...i, x: action.fromX, y: action.fromY } : i
+          )
+        );
+        const movedImage = images.find((i) => i.id === action.imageId);
+        if (movedImage) {
+          onImageUpdate?.({ ...movedImage, x: action.fromX, y: action.fromY });
+        }
+        break;
+      case 'image_resize':
+        setImages((prev) =>
+          prev.map((i) => (i.id === action.imageId ? action.from : i))
+        );
+        onImageUpdate?.(action.from);
+        break;
     }
-  }, [onStrokeUndo, onShapeDelete, onShapeCreate, onShapeUpdate, shapes, onTextDelete, onTextCreate, onTextUpdate, texts, onStickyDelete, onStickyCreate, onStickyUpdate, stickyNotes, setShapes, setTexts, setStickyNotes]);
+  }, [onStrokeUndo, onShapeDelete, onShapeCreate, onShapeUpdate, shapes, onTextDelete, onTextCreate, onTextUpdate, texts, onStickyDelete, onStickyCreate, onStickyUpdate, stickyNotes, onImageDelete, onImageCreate, onImageUpdate, images, setShapes, setTexts, setStickyNotes, setImages]);
 
   const applyRedo = useCallback((action: HistoryAction) => {
     switch (action.type) {
@@ -284,8 +317,33 @@ export function useHistoryActions({
           onStickyUpdate?.({ ...coloredSticky, color: action.toColor });
         }
         break;
+      case 'image_create':
+        setImages((prev) => [...prev, action.image]);
+        onImageCreate?.(action.image);
+        break;
+      case 'image_delete':
+        setImages((prev) => prev.filter((i) => i.id !== action.image.id));
+        onImageDelete?.(action.image.id);
+        break;
+      case 'image_move':
+        setImages((prev) =>
+          prev.map((i) =>
+            i.id === action.imageId ? { ...i, x: action.toX, y: action.toY } : i
+          )
+        );
+        const movedImageRedo = images.find((i) => i.id === action.imageId);
+        if (movedImageRedo) {
+          onImageUpdate?.({ ...movedImageRedo, x: action.toX, y: action.toY });
+        }
+        break;
+      case 'image_resize':
+        setImages((prev) =>
+          prev.map((i) => (i.id === action.imageId ? action.to : i))
+        );
+        onImageUpdate?.(action.to);
+        break;
     }
-  }, [onStrokeRedo, onShapeCreate, onShapeDelete, onShapeUpdate, shapes, onTextCreate, onTextDelete, onTextUpdate, texts, onStickyCreate, onStickyDelete, onStickyUpdate, stickyNotes, setShapes, setTexts, setStickyNotes]);
+  }, [onStrokeRedo, onShapeCreate, onShapeDelete, onShapeUpdate, shapes, onTextCreate, onTextDelete, onTextUpdate, texts, onStickyCreate, onStickyDelete, onStickyUpdate, stickyNotes, onImageCreate, onImageDelete, onImageUpdate, images, setShapes, setTexts, setStickyNotes, setImages]);
 
   const handleUndo = useCallback(() => {
     const action = undo();

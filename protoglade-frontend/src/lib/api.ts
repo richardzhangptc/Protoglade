@@ -316,12 +316,13 @@ class ApiClient {
     });
   }
 
-  // Whiteboard Elements (Shapes, Texts, Sticky Notes)
+  // Whiteboard Elements (Shapes, Texts, Sticky Notes, Images)
   async getWhiteboardElements(projectId: string) {
     return this.request<{
       shapes: Array<import('@/types').WhiteboardShape>;
       texts: Array<import('@/types').WhiteboardText>;
       stickyNotes: Array<import('@/types').WhiteboardStickyNote>;
+      images: Array<import('@/types').WhiteboardImage>;
     }>(`/whiteboard/${projectId}/elements`);
   }
 
@@ -438,6 +439,80 @@ class ApiClient {
     return this.request<{ message: string }>(`/whiteboard/sticky-notes/${id}`, {
       method: 'DELETE',
     });
+  }
+
+  // Whiteboard Images
+  async getWhiteboardImages(projectId: string) {
+    return this.request<Array<import('@/types').WhiteboardImage>>(`/whiteboard/${projectId}/images`);
+  }
+
+  async uploadWhiteboardImage(projectId: string, file: File, data: {
+    id?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  }) {
+    const token = this.getToken();
+    const formData = new FormData();
+    formData.append('file', file);
+    if (data.id) formData.append('id', data.id);
+    if (data.x !== undefined) formData.append('x', String(data.x));
+    if (data.y !== undefined) formData.append('y', String(data.y));
+    if (data.width !== undefined) formData.append('width', String(data.width));
+    if (data.height !== undefined) formData.append('height', String(data.height));
+
+    const response = await fetch(`${API_URL}/whiteboard/${projectId}/images`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || 'Upload failed');
+    }
+
+    return response.json() as Promise<import('@/types').WhiteboardImage>;
+  }
+
+  async updateWhiteboardImage(id: string, data: Partial<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>) {
+    return this.request<import('@/types').WhiteboardImage>(`/whiteboard/images/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteWhiteboardImage(id: string) {
+    return this.request<{ message: string }>(`/whiteboard/images/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getWhiteboardImageFileBlob(id: string): Promise<Blob> {
+    const token = this.getToken();
+
+    const response = await fetch(`${API_URL}/whiteboard/images/${id}/file`, {
+      method: 'GET',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      // Best-effort parse, but this endpoint is not JSON
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `Failed to fetch image file (${response.status})`);
+    }
+
+    return response.blob();
   }
 }
 

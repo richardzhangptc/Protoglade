@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { WhiteboardStroke, WhiteboardPoint } from '@/types';
 import {
   ToolType,
   ShapeElement,
   TextElement,
   StickyNoteElement,
+  ImageElement,
   RemoteStroke,
   RemoteCursor,
 } from './whiteboard/types';
@@ -18,11 +19,16 @@ import { TextBox } from './whiteboard/TextBox';
 import { TextFormatToolbar } from './whiteboard/TextFormatToolbar';
 import { StickyNote } from './whiteboard/StickyNote';
 import { StickyNoteFormatToolbar } from './whiteboard/StickyNoteFormatToolbar';
+import { WhiteboardImage } from './whiteboard/WhiteboardImage';
+import { validateImageFile, getImageDimensions } from './whiteboard/imageUpload';
+import { api } from '@/lib/api';
 import {
   useWhiteboardState,
   useHistoryActions,
   useTextHandlers,
   useStickyHandlers,
+  useImageHandlers,
+  useImageDropHandler,
   usePointerHandlers,
   useCanvasResize,
   useCanvasRendering,
@@ -38,6 +44,8 @@ interface WhiteboardProps {
   sidebarCollapsed: boolean;
   initialShapes?: ShapeElement[];
   initialTexts?: TextElement[];
+  initialStickyNotes?: StickyNoteElement[];
+  initialImages?: ImageElement[];
   onStrokeStart: (strokeId: string, point: WhiteboardPoint, color: string, size: number) => void;
   onStrokePoint: (strokeId: string, point: WhiteboardPoint) => void;
   onStrokeEnd: (strokeId: string, points: WhiteboardPoint[], color: string, size: number) => void;
@@ -52,13 +60,15 @@ interface WhiteboardProps {
   onTextCreate?: (text: TextElement) => void;
   onTextUpdate?: (text: TextElement) => void;
   onTextDelete?: (id: string) => void;
-  initialStickyNotes?: StickyNoteElement[];
   onStickyCreate?: (sticky: StickyNoteElement) => void;
   onStickyUpdate?: (sticky: StickyNoteElement) => void;
   onStickyDelete?: (id: string) => void;
+  onImageUpdate?: (image: ImageElement) => void;
+  onImageDelete?: (id: string) => void;
 }
 
 export function Whiteboard({
+  projectId,
   strokes,
   remoteStrokes,
   remoteCursors,
@@ -66,6 +76,7 @@ export function Whiteboard({
   initialShapes = [],
   initialTexts = [],
   initialStickyNotes = [],
+  initialImages = [],
   onStrokeStart,
   onStrokePoint,
   onStrokeEnd,
@@ -83,22 +94,28 @@ export function Whiteboard({
   onStickyCreate,
   onStickyUpdate,
   onStickyDelete,
+  onImageUpdate,
+  onImageDelete,
 }: WhiteboardProps) {
+  // Image upload state
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   // Centralized state management
   const state = useWhiteboardState({
     initialShapes,
     initialTexts,
     initialStickyNotes,
+    initialImages,
   });
 
   const {
-    refs: { canvasRef, containerRef, lastPanPoint, initializedRef, textInitializedRef, stickyInitializedRef },
+    refs: { canvasRef, containerRef, lastPanPoint, initializedRef, textInitializedRef, stickyInitializedRef, imageInitializedRef },
     canvas: { canvasSize, setCanvasSize, pan, setPan, zoom, setZoom, isPanning, setIsPanning },
     tools: { activeTool, setActiveTool, showPenOptions, setShowPenOptions, showShapeOptions, setShowShapeOptions, color, setColor, size, setSize, selectedShapeType, setSelectedShapeType, shapeFilled, setShapeFilled },
     textTool: { textFontSize, textFontWeight, textAlign },
     drawing: { isDrawing, setIsDrawing, currentStroke, setCurrentStroke, currentStrokeId, setCurrentStrokeId },
     shapeDrawing: { isDrawingShape, setIsDrawingShape, shapeStartPoint, setShapeStartPoint, currentShape, setCurrentShape },
-    elements: { shapes, setShapes, texts, setTexts, stickyNotes, setStickyNotes },
+    elements: { shapes, setShapes, texts, setTexts, stickyNotes, setStickyNotes, images, setImages },
     selection: { selectedElementId, setSelectedElementId, selectedElementType, setSelectedElementType, isDragging, setIsDragging, dragOffset, setDragOffset, dragStartPosition, setDragStartPosition },
     textEditing: { editingTextId, setEditingTextId, textBeforeEdit, setTextBeforeEdit },
     stickyEditing: { editingStickyId, setEditingStickyId, stickyBeforeEdit, setStickyBeforeEdit },
@@ -122,8 +139,11 @@ export function Whiteboard({
       onStickyCreate,
       onStickyUpdate,
       onStickyDelete,
+      onImageCreate: undefined, // Images are created via upload, not redo
+      onImageUpdate,
+      onImageDelete,
     },
-    state: { shapes, texts, stickyNotes, setShapes, setTexts, setStickyNotes },
+    state: { shapes, texts, stickyNotes, images, setShapes, setTexts, setStickyNotes, setImages },
     undo,
     redo,
   });
@@ -177,6 +197,50 @@ export function Whiteboard({
     setSelectedElementType,
     pushAction,
     onStickyUpdate,
+  });
+
+  // Image handlers
+  const {
+    handleImageSelect,
+    handleImageMove,
+    handleImageMoveEnd,
+    handleImageResize,
+    handleImageResizeEnd,
+    handleImageDelete: handleImageDeleteLocal,
+    handleImageAdd,
+  } = useImageHandlers({
+    images,
+    setImages,
+    selectedElementId,
+    selectedElementType,
+    setSelectedElementId,
+    setSelectedElementType,
+    onImageUpdate,
+    onImageDelete,
+    pushHistory: (action) => {
+      // Map to the history action format
+      if (action.type === 'addImage') {
+        pushAction({ type: 'image_create', image: (action.data as { image: ImageElement }).image });
+      } else if (action.type === 'updateImage') {
+        const { before, after } = action.data as { before: ImageElement; after: ImageElement };
+        if (before.x !== after.x || before.y !== after.y) {
+          pushAction({ type: 'image_move', imageId: after.id, fromX: before.x, fromY: before.y, toX: after.x, toY: after.y });
+        } else {
+          pushAction({ type: 'image_resize', imageId: after.id, from: before, to: after });
+        }
+      } else if (action.type === 'deleteImage') {
+        pushAction({ type: 'image_delete', image: (action.data as { image: ImageElement }).image });
+      }
+    },
+  });
+
+  // Image drop handler for drag-and-drop uploads
+  const { isDragOver, isUploading: isDropUploading, uploadError } = useImageDropHandler({
+    projectId,
+    containerRef,
+    zoom,
+    pan,
+    onImageAdd: handleImageAdd,
   });
 
   // Pointer handlers
@@ -287,9 +351,11 @@ export function Whiteboard({
     shapes,
     texts,
     stickyNotes,
+    images,
     setShapes,
     setTexts,
     setStickyNotes,
+    setImages,
     setSelectedElementId,
     setSelectedElementType,
     pushAction,
@@ -298,6 +364,7 @@ export function Whiteboard({
     onShapeDelete,
     onTextDelete,
     onStickyDelete,
+    onImageDelete,
   });
 
   // Initialize shapes from props
@@ -324,6 +391,14 @@ export function Whiteboard({
     }
   }, [initialStickyNotes, stickyInitializedRef, setStickyNotes]);
 
+  // Initialize images from props
+  useEffect(() => {
+    if (!imageInitializedRef.current && initialImages.length > 0) {
+      setImages(initialImages);
+      imageInitializedRef.current = true;
+    }
+  }, [initialImages, imageInitializedRef, setImages]);
+
   // Tool handlers
   const handleToolClick = useCallback((tool: ToolType) => {
     if (tool === 'pen' && activeTool === 'pen') {
@@ -345,13 +420,71 @@ export function Whiteboard({
     setShapes([]);
     setTexts([]);
     setStickyNotes([]);
+    setImages([]);
     setSelectedElementId(null);
     setSelectedElementType(null);
     setEditingTextId(null);
     setEditingStickyId(null);
     clearHistory();
     onClear();
-  }, [onClear, clearHistory, setShapes, setTexts, setStickyNotes, setSelectedElementId, setSelectedElementType, setEditingTextId, setEditingStickyId]);
+  }, [onClear, clearHistory, setShapes, setTexts, setStickyNotes, setImages, setSelectedElementId, setSelectedElementType, setEditingTextId, setEditingStickyId]);
+
+  // Handle image upload from toolbar
+  const handleImageUpload = useCallback(async (file: File) => {
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      console.error('Invalid file:', validation.error);
+      return;
+    }
+
+    try {
+      setIsUploadingImage(true);
+
+      // Get image dimensions
+      const dimensions = await getImageDimensions(file);
+
+      // Scale down if too large (max 400px on longest side for initial placement)
+      const maxSize = 400;
+      let width = dimensions.width;
+      let height = dimensions.height;
+      if (width > maxSize || height > maxSize) {
+        const scale = maxSize / Math.max(width, height);
+        width = width * scale;
+        height = height * scale;
+      }
+
+      // Place at center of viewport
+      const centerX = (-pan.x + (containerRef.current?.clientWidth || 800) / 2) / zoom - width / 2;
+      const centerY = (-pan.y + (containerRef.current?.clientHeight || 600) / 2) / zoom - height / 2;
+
+      // Generate a temporary ID
+      const tempId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Upload the image
+      const uploadedImage = await api.uploadWhiteboardImage(projectId, file, {
+        id: tempId,
+        x: centerX,
+        y: centerY,
+        width,
+        height,
+      });
+
+      // Add to canvas
+      handleImageAdd({
+        id: uploadedImage.id,
+        url: uploadedImage.url,
+        s3Key: uploadedImage.s3Key,
+        x: uploadedImage.x,
+        y: uploadedImage.y,
+        width: uploadedImage.width,
+        height: uploadedImage.height,
+      });
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }, [projectId, pan, zoom, containerRef, handleImageAdd]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative">
@@ -422,6 +555,41 @@ export function Whiteboard({
         ))}
       </div>
 
+      {/* Images layer */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {images.map((image) => (
+          <div key={image.id} className="pointer-events-auto">
+            <WhiteboardImage
+              element={image}
+              isSelected={selectedElementId === image.id}
+              zoom={zoom}
+              pan={pan}
+              onSelect={() => handleImageSelect(image.id)}
+              onMove={(x, y) => handleImageMove(image.id, x, y)}
+              onMoveEnd={handleImageMoveEnd}
+              onResize={(w, h) => handleImageResize(image.id, w, h)}
+              onResizeEnd={handleImageResizeEnd}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-lg pointer-events-none flex items-center justify-center z-50">
+          <div className="bg-white px-4 py-2 rounded-lg shadow-lg text-blue-600 font-medium">
+            Drop image here
+          </div>
+        </div>
+      )}
+
+      {/* Upload error toast */}
+      {uploadError && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">
+          {uploadError}
+        </div>
+      )}
+
       {/* Toolbar */}
       <WhiteboardToolbar
         activeTool={activeTool}
@@ -429,6 +597,7 @@ export function Whiteboard({
         sidebarCollapsed={sidebarCollapsed}
         canUndo={canUndo}
         canRedo={canRedo}
+        isUploadingImage={isUploadingImage || isDropUploading}
         onToolClick={handleToolClick}
         onUndo={handleUndo}
         onRedo={handleRedo}
@@ -436,6 +605,7 @@ export function Whiteboard({
         onZoomIn={() => setZoom((z) => Math.min(5, z * 1.25))}
         onZoomOut={() => setZoom((z) => Math.max(0.1, z * 0.8))}
         onResetView={() => { setPan({ x: 0, y: 0 }); setZoom(1); }}
+        onImageUpload={handleImageUpload}
       />
 
       {/* Pen Options */}

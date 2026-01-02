@@ -65,6 +65,7 @@ model Project {
   shapes       WhiteboardShape[]
   texts        WhiteboardText[]
   stickyNotes  WhiteboardStickyNote[]
+  images       WhiteboardImage[]
 }
 
 model KanbanColumn {
@@ -217,6 +218,24 @@ model WhiteboardStickyNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String   // User ID who created the sticky note
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model WhiteboardImage {
+  id        String   @id @default(uuid())
+  url       String   // S3 URL of the image
+  s3Key     String   // S3 key for deletion
+  x         Float    @default(0)
+  y         Float    @default(0)
+  width     Float
+  height    Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String   // User ID who created the image
 
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

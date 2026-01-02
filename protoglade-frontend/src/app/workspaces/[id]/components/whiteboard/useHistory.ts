@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { ShapeElement, TextElement, StickyNoteElement } from './types';
+import { ShapeElement, TextElement, StickyNoteElement, ImageElement } from './types';
 import { WhiteboardStroke } from '@/types';
 
 // Action types for undo/redo
@@ -19,7 +19,11 @@ export type HistoryAction =
   | { type: 'sticky_move'; stickyId: string; fromX: number; fromY: number; toX: number; toY: number }
   | { type: 'sticky_resize'; stickyId: string; from: StickyNoteElement; to: StickyNoteElement }
   | { type: 'sticky_edit'; stickyId: string; fromContent: string; toContent: string }
-  | { type: 'sticky_color'; stickyId: string; fromColor: string; toColor: string };
+  | { type: 'sticky_color'; stickyId: string; fromColor: string; toColor: string }
+  | { type: 'image_create'; image: ImageElement }
+  | { type: 'image_delete'; image: ImageElement }
+  | { type: 'image_move'; imageId: string; fromX: number; fromY: number; toX: number; toY: number }
+  | { type: 'image_resize'; imageId: string; from: ImageElement; to: ImageElement };
 
 interface UseHistoryOptions {
   maxHistory?: number;

@@ -10,6 +10,10 @@ export type { UseTextHandlersOptions } from './useTextHandlers';
 export { useStickyHandlers } from './useStickyHandlers';
 export type { UseStickyHandlersOptions } from './useStickyHandlers';
 
+export { useImageHandlers } from './useImageHandlers';
+
+export { useImageDropHandler } from './useImageDropHandler';
+
 export { usePointerHandlers } from './usePointerHandlers';
 export type { UsePointerHandlersOptions } from './usePointerHandlers';
 

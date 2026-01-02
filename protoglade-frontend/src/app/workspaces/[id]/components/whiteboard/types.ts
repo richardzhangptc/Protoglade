@@ -1,6 +1,6 @@
 import { WhiteboardShapeType, WhiteboardPoint } from '@/types';
 
-export type ToolType = 'select' | 'shapes' | 'pen' | 'text' | 'sticky';
+export type ToolType = 'select' | 'shapes' | 'pen' | 'text' | 'sticky' | 'image';
 
 export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | null;
 
@@ -49,6 +49,16 @@ export interface StickyNoteElement {
   content: string;
   color: string; // Background color
   fontSize: number; // Font size in pixels
+}
+
+export interface ImageElement {
+  id: string;
+  url: string;
+  s3Key: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface RemoteStroke {

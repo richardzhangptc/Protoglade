@@ -6,12 +6,14 @@ import {
   ShapeElement,
   TextElement,
   StickyNoteElement,
+  ImageElement,
 } from '../types';
 
 export interface WhiteboardStateOptions {
   initialShapes?: ShapeElement[];
   initialTexts?: TextElement[];
   initialStickyNotes?: StickyNoteElement[];
+  initialImages?: ImageElement[];
 }
 
 export function useWhiteboardState(options: WhiteboardStateOptions = {}) {
@@ -19,6 +21,7 @@ export function useWhiteboardState(options: WhiteboardStateOptions = {}) {
     initialShapes = [],
     initialTexts = [],
     initialStickyNotes = [],
+    initialImages = [],
   } = options;
 
   // Refs
@@ -28,6 +31,7 @@ export function useWhiteboardState(options: WhiteboardStateOptions = {}) {
   const initializedRef = useRef(false);
   const textInitializedRef = useRef(false);
   const stickyInitializedRef = useRef(false);
+  const imageInitializedRef = useRef(false);
 
   // Canvas state
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -63,10 +67,11 @@ export function useWhiteboardState(options: WhiteboardStateOptions = {}) {
   const [shapes, setShapes] = useState<ShapeElement[]>(initialShapes);
   const [texts, setTexts] = useState<TextElement[]>(initialTexts);
   const [stickyNotes, setStickyNotes] = useState<StickyNoteElement[]>(initialStickyNotes);
+  const [images, setImages] = useState<ImageElement[]>(initialImages);
 
   // Selection state
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [selectedElementType, setSelectedElementType] = useState<'shape' | 'text' | 'sticky' | null>(null);
+  const [selectedElementType, setSelectedElementType] = useState<'shape' | 'text' | 'sticky' | 'image' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);
@@ -94,6 +99,7 @@ export function useWhiteboardState(options: WhiteboardStateOptions = {}) {
       initializedRef,
       textInitializedRef,
       stickyInitializedRef,
+      imageInitializedRef,
     },
 
     // Canvas state
@@ -164,6 +170,8 @@ export function useWhiteboardState(options: WhiteboardStateOptions = {}) {
       setTexts,
       stickyNotes,
       setStickyNotes,
+      images,
+      setImages,
     },
 
     // Selection state

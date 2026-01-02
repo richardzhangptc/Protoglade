@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { ToolType } from './types';
 
 interface WhiteboardToolbarProps {
@@ -8,6 +9,7 @@ interface WhiteboardToolbarProps {
   sidebarCollapsed: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  isUploadingImage?: boolean;
   onToolClick: (tool: ToolType) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -15,6 +17,7 @@ interface WhiteboardToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetView: () => void;
+  onImageUpload?: (file: File) => void;
 }
 
 export function WhiteboardToolbar({
@@ -23,6 +26,7 @@ export function WhiteboardToolbar({
   sidebarCollapsed,
   canUndo,
   canRedo,
+  isUploadingImage,
   onToolClick,
   onUndo,
   onRedo,
@@ -30,7 +34,23 @@ export function WhiteboardToolbar({
   onZoomIn,
   onZoomOut,
   onResetView,
+  onImageUpload,
 }: WhiteboardToolbarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onImageUpload) {
+      onImageUpload(file);
+    }
+    // Reset input so the same file can be selected again
+    e.target.value = '';
+  };
+
   return (
     <div
       className="absolute top-1/2 -translate-y-1/2 flex flex-col gap-1 p-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg transition-[left] duration-200"
@@ -108,6 +128,33 @@ export function WhiteboardToolbar({
           <rect x="9" y="3" width="6" height="4" rx="1" strokeWidth={2} fill="#fef08a" stroke="currentColor" />
         </svg>
       </button>
+
+      {/* Image upload button */}
+      <button
+        onClick={handleImageButtonClick}
+        disabled={isUploadingImage}
+        className={`p-2.5 rounded-xl transition-all ${
+          isUploadingImage
+            ? 'opacity-50 cursor-not-allowed'
+            : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
+        }`}
+        title="Upload Image"
+      >
+        {isUploadingImage ? (
+          <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        )}
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        onChange={handleFileChange}
+        className="hidden"
+      />
 
       {/* Divider */}
       <div className="h-px w-full bg-[var(--color-border)] my-1" />

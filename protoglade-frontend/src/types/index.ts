@@ -164,3 +164,17 @@ export interface WhiteboardStickyNote {
   projectId: string;
 }
 
+export interface WhiteboardImage {
+  id: string;
+  url: string;
+  s3Key: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  projectId: string;
+}
+

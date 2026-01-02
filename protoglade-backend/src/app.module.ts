@@ -12,6 +12,7 @@ import { UnsubscribeModule } from './unsubscribe/unsubscribe.module';
 import { PresenceModule } from './presence/presence.module';
 import { ColumnModule } from './column/column.module';
 import { WhiteboardModule } from './whiteboard/whiteboard.module';
+import { S3Module } from './s3/s3.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { WhiteboardModule } from './whiteboard/whiteboard.module';
     PresenceModule,
     ColumnModule,
     WhiteboardModule,
+    S3Module,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

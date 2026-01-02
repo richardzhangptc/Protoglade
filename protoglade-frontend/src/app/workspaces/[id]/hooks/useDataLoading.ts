@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Workspace, Project, Invitation, Task, KanbanColumn, WhiteboardShape, WhiteboardText, WhiteboardStickyNote, WhiteboardStroke } from '@/types';
+import { Workspace, Project, Invitation, Task, KanbanColumn, WhiteboardShape, WhiteboardText, WhiteboardStickyNote, WhiteboardStroke, WhiteboardImage } from '@/types';
 import { api } from '@/lib/api';
 import { RemoteStroke } from './useWhiteboardPageState';
 
@@ -20,6 +20,7 @@ export interface UseDataLoadingOptions {
   setShapes: React.Dispatch<React.SetStateAction<WhiteboardShape[]>>;
   setTexts: React.Dispatch<React.SetStateAction<WhiteboardText[]>>;
   setStickyNotes: React.Dispatch<React.SetStateAction<WhiteboardStickyNote[]>>;
+  setImages: React.Dispatch<React.SetStateAction<WhiteboardImage[]>>;
   setRemoteStrokes: React.Dispatch<React.SetStateAction<Map<string, RemoteStroke>>>;
 }
 
@@ -39,6 +40,7 @@ export function useDataLoading({
   setShapes,
   setTexts,
   setStickyNotes,
+  setImages,
   setRemoteStrokes,
 }: UseDataLoadingOptions) {
   const router = useRouter();
@@ -73,12 +75,13 @@ export function useDataLoading({
         // Load whiteboard strokes and elements
         const [strokesData, elementsData] = await Promise.all([
           api.getWhiteboardStrokes(projectId),
-          api.getWhiteboardElements(projectId).catch(() => ({ shapes: [], texts: [], stickyNotes: [] })),
+          api.getWhiteboardElements(projectId).catch(() => ({ shapes: [], texts: [], stickyNotes: [], images: [] })),
         ]);
         setStrokes(strokesData);
         setShapes(elementsData.shapes);
         setTexts(elementsData.texts);
         setStickyNotes(elementsData.stickyNotes || []);
+        setImages(elementsData.images || []);
         setTasks([]);
         setColumns([]);
         setRemoteStrokes(new Map());
@@ -94,6 +97,7 @@ export function useDataLoading({
         setShapes([]);
         setTexts([]);
         setStickyNotes([]);
+        setImages([]);
         setRemoteStrokes(new Map());
       }
     } catch (error) {
@@ -112,6 +116,7 @@ export function useDataLoading({
     setShapes,
     setTexts,
     setStickyNotes,
+    setImages,
     setRemoteStrokes,
   ]);
 

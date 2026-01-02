@@ -98,6 +98,7 @@ export default function WorkspacePage() {
     shapes, setShapes,
     texts, setTexts,
     stickyNotes, setStickyNotes,
+    images, setImages,
   } = whiteboardState;
 
   // Realtime sync
@@ -144,6 +145,7 @@ export default function WorkspacePage() {
     setShapes,
     setTexts,
     setStickyNotes,
+    setImages,
     setRemoteStrokes,
   });
 
@@ -248,6 +250,8 @@ export default function WorkspacePage() {
     handleStickyCreate,
     handleStickyUpdate,
     handleStickyDelete,
+    handleImageUpdate,
+    handleImageDelete,
     handleWhiteboardCursorMove,
   } = useWhiteboardOperations({
     selectedProjectId,
@@ -257,6 +261,7 @@ export default function WorkspacePage() {
     setShapes,
     setTexts,
     setStickyNotes,
+    setImages,
     setRemoteStrokes,
     emitStrokeStart,
     emitStrokePoint,
@@ -331,6 +336,7 @@ export default function WorkspacePage() {
               initialShapes={shapes}
               initialTexts={texts}
               initialStickyNotes={stickyNotes}
+              initialImages={images}
               onStrokeStart={handleStrokeStart}
               onStrokePoint={handleStrokePoint}
               onStrokeEnd={handleStrokeEnd}
@@ -348,6 +354,8 @@ export default function WorkspacePage() {
               onStickyCreate={handleStickyCreate}
               onStickyUpdate={handleStickyUpdate}
               onStickyDelete={handleStickyDelete}
+              onImageUpdate={handleImageUpdate}
+              onImageDelete={handleImageDelete}
             />
           )}
         </div>

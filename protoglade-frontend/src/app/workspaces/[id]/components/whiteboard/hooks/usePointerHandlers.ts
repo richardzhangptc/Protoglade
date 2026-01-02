@@ -64,8 +64,8 @@ export interface UsePointerHandlersOptions {
   // Selection state
   selectedElementId: string | null;
   setSelectedElementId: React.Dispatch<React.SetStateAction<string | null>>;
-  selectedElementType: 'shape' | 'text' | 'sticky' | null;
-  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | null>>;
+  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | null;
+  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | null>>;
   isDragging: boolean;
   setIsDragging: React.Dispatch<React.SetStateAction<boolean>>;
   dragOffset: { x: number; y: number };

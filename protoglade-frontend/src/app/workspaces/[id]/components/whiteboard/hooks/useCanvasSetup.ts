@@ -23,7 +23,7 @@ export interface UseCanvasRenderingOptions {
   size: number;
   remoteCursors: RemoteCursor[];
   selectedElementId: string | null;
-  selectedElementType: 'shape' | 'text' | 'sticky' | null;
+  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | null;
 }
 
 export function useCanvasResize({

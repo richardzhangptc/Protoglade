@@ -3,7 +3,9 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import type { Readable } from 'stream';
 import { PrismaService } from '../prisma/prisma.service';
+import { S3Service } from '../s3/s3.service';
 import { CreateStrokeDto } from './dto/create-stroke.dto';
 import { CreateShapeDto } from './dto/create-shape.dto';
 import { UpdateShapeDto } from './dto/update-shape.dto';
@@ -11,10 +13,15 @@ import { CreateTextDto } from './dto/create-text.dto';
 import { UpdateTextDto } from './dto/update-text.dto';
 import { CreateStickyDto } from './dto/create-sticky.dto';
 import { UpdateStickyDto } from './dto/update-sticky.dto';
+import { CreateImageDto } from './dto/create-image.dto';
+import { UpdateImageDto } from './dto/update-image.dto';
 
 @Injectable()
 export class WhiteboardService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private s3Service: S3Service,
+  ) {}
 
   // Get all strokes for a project
   async getStrokes(projectId: string, userId: string) {
@@ -112,7 +119,7 @@ export class WhiteboardService {
 
     await this.checkWorkspaceMembership(project.workspaceId, userId);
 
-    const [shapes, texts, stickyNotes] = await Promise.all([
+    const [shapes, texts, stickyNotes, images] = await Promise.all([
       this.prisma.whiteboardShape.findMany({
         where: { projectId },
         orderBy: { createdAt: 'asc' },
@@ -125,9 +132,13 @@ export class WhiteboardService {
         where: { projectId },
         orderBy: { createdAt: 'asc' },
       }),
+      this.prisma.whiteboardImage.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
 
-    return { shapes, texts, stickyNotes };
+    return { shapes, texts, stickyNotes, images };
   }
 
   // Shapes CRUD
@@ -324,6 +335,124 @@ export class WhiteboardService {
     });
 
     return { message: 'Sticky note deleted successfully' };
+  }
+
+  // Images CRUD
+  async getImages(projectId: string, userId: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    await this.checkWorkspaceMembership(project.workspaceId, userId);
+
+    return this.prisma.whiteboardImage.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async createImage(
+    projectId: string,
+    userId: string,
+    file: Express.Multer.File,
+    dto: CreateImageDto,
+  ) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    await this.checkWorkspaceMembership(project.workspaceId, userId);
+
+    // Upload to S3
+    const { url, key } = await this.s3Service.uploadFile(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+
+    return this.prisma.whiteboardImage.create({
+      data: {
+        id: dto.id,
+        url,
+        s3Key: key,
+        x: dto.x ?? 0,
+        y: dto.y ?? 0,
+        width: dto.width ?? 200,
+        height: dto.height ?? 200,
+        createdBy: userId,
+        projectId,
+      },
+    });
+  }
+
+  async updateImage(id: string, userId: string, dto: UpdateImageDto) {
+    const image = await this.prisma.whiteboardImage.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Image not found');
+    }
+
+    await this.checkWorkspaceMembership(image.project.workspaceId, userId);
+
+    return this.prisma.whiteboardImage.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
+  async deleteImage(id: string, userId: string) {
+    const image = await this.prisma.whiteboardImage.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Image not found');
+    }
+
+    await this.checkWorkspaceMembership(image.project.workspaceId, userId);
+
+    // Delete from S3
+    try {
+      await this.s3Service.deleteFile(image.s3Key);
+    } catch (error) {
+      console.error('Failed to delete image from S3:', error);
+    }
+
+    await this.prisma.whiteboardImage.delete({
+      where: { id },
+    });
+
+    return { message: 'Image deleted successfully' };
+  }
+
+  async getImageFileStream(
+    id: string,
+    userId: string,
+  ): Promise<{ body: Readable; contentType?: string; contentLength?: number }> {
+    const image = await this.prisma.whiteboardImage.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Image not found');
+    }
+
+    await this.checkWorkspaceMembership(image.project.workspaceId, userId);
+
+    return this.s3Service.getFileStream(image.s3Key);
   }
 
   // Helper: Check if user is a member of the workspace

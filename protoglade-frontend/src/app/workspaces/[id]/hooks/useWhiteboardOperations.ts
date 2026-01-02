@@ -15,6 +15,7 @@ export interface UseWhiteboardOperationsOptions {
   setShapes: React.Dispatch<React.SetStateAction<any[]>>;
   setTexts: React.Dispatch<React.SetStateAction<any[]>>;
   setStickyNotes: React.Dispatch<React.SetStateAction<any[]>>;
+  setImages: React.Dispatch<React.SetStateAction<any[]>>;
   setRemoteStrokes: React.Dispatch<React.SetStateAction<Map<string, RemoteStroke>>>;
   emitStrokeStart: (strokeId: string, point: WhiteboardPoint, color: string, size: number) => void;
   emitStrokePoint: (strokeId: string, point: WhiteboardPoint) => void;
@@ -31,6 +32,7 @@ export function useWhiteboardOperations({
   setShapes,
   setTexts,
   setStickyNotes,
+  setImages,
   setRemoteStrokes,
   emitStrokeStart,
   emitStrokePoint,
@@ -114,6 +116,7 @@ export function useWhiteboardOperations({
     setShapes([]);
     setTexts([]);
     setStickyNotes([]);
+    setImages([]);
     setRemoteStrokes(new Map());
     emitCanvasClear();
 
@@ -122,7 +125,7 @@ export function useWhiteboardOperations({
     } catch (error) {
       console.error('Failed to clear canvas:', error);
     }
-  }, [selectedProjectId, setStrokes, setShapes, setTexts, setStickyNotes, setRemoteStrokes, emitCanvasClear]);
+  }, [selectedProjectId, setStrokes, setShapes, setTexts, setStickyNotes, setImages, setRemoteStrokes, emitCanvasClear]);
 
   // Shape handlers
   const handleShapeCreate = useCallback(async (shape: { id: string; type: WhiteboardShapeType; x: number; y: number; width: number; height: number; color: string; strokeWidth: number; filled: boolean }) => {
@@ -248,6 +251,28 @@ export function useWhiteboardOperations({
     }
   }, []);
 
+  // Image handlers
+  const handleImageUpdate = useCallback(async (image: { id: string; x: number; y: number; width: number; height: number }) => {
+    try {
+      await api.updateWhiteboardImage(image.id, {
+        x: image.x,
+        y: image.y,
+        width: image.width,
+        height: image.height,
+      });
+    } catch (error) {
+      console.error('Failed to update image:', error);
+    }
+  }, []);
+
+  const handleImageDelete = useCallback(async (id: string) => {
+    try {
+      await api.deleteWhiteboardImage(id);
+    } catch (error) {
+      console.error('Failed to delete image:', error);
+    }
+  }, []);
+
   const handleWhiteboardCursorMove = useCallback((x: number, y: number) => {
     emitCursorMove({ x, y, isDragging: false, dragTaskId: null, dragTaskTitle: null });
   }, [emitCursorMove]);
@@ -268,6 +293,8 @@ export function useWhiteboardOperations({
     handleStickyCreate,
     handleStickyUpdate,
     handleStickyDelete,
+    handleImageUpdate,
+    handleImageDelete,
     handleWhiteboardCursorMove,
   };
 }
