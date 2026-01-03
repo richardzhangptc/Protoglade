@@ -1,22 +1,24 @@
 import { useEffect } from 'react';
-import { ShapeElement, TextElement, StickyNoteElement, ImageElement } from '../types';
+import { ShapeElement, TextElement, StickyNoteElement, ImageElement, StrokeElement } from '../types';
 import { HistoryAction } from '../useHistory';
 
 export interface UseKeyboardShortcutsOptions {
   editingTextId: string | null;
   editingStickyId: string | null;
   selectedElementId: string | null;
-  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | null;
+  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null;
   shapes: ShapeElement[];
   texts: TextElement[];
   stickyNotes: StickyNoteElement[];
   images: ImageElement[];
+  strokes: StrokeElement[];
   setShapes: React.Dispatch<React.SetStateAction<ShapeElement[]>>;
   setTexts: React.Dispatch<React.SetStateAction<TextElement[]>>;
   setStickyNotes: React.Dispatch<React.SetStateAction<StickyNoteElement[]>>;
   setImages: React.Dispatch<React.SetStateAction<ImageElement[]>>;
+  setStrokes: React.Dispatch<React.SetStateAction<StrokeElement[]>>;
   setSelectedElementId: React.Dispatch<React.SetStateAction<string | null>>;
-  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | null>>;
+  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null>>;
   pushAction: (action: HistoryAction) => void;
   handleUndo: () => void;
   handleRedo: () => void;
@@ -24,6 +26,7 @@ export interface UseKeyboardShortcutsOptions {
   onTextDelete?: (id: string) => void;
   onStickyDelete?: (id: string) => void;
   onImageDelete?: (id: string) => void;
+  onStrokeDelete?: (id: string) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -35,10 +38,12 @@ export function useKeyboardShortcuts({
   texts,
   stickyNotes,
   images,
+  strokes,
   setShapes,
   setTexts,
   setStickyNotes,
   setImages,
+  setStrokes,
   setSelectedElementId,
   setSelectedElementType,
   pushAction,
@@ -48,6 +53,7 @@ export function useKeyboardShortcuts({
   onTextDelete,
   onStickyDelete,
   onImageDelete,
+  onStrokeDelete,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -98,6 +104,13 @@ export function useKeyboardShortcuts({
             setImages((prev) => prev.filter((i) => i.id !== selectedElementId));
             onImageDelete?.(selectedElementId);
           }
+        } else if (selectedElementType === 'stroke') {
+          const strokeToDelete = strokes.find((s) => s.id === selectedElementId);
+          if (strokeToDelete) {
+            pushAction({ type: 'stroke_delete', stroke: strokeToDelete });
+            setStrokes((prev) => prev.filter((s) => s.id !== selectedElementId));
+            onStrokeDelete?.(selectedElementId);
+          }
         }
         setSelectedElementId(null);
         setSelectedElementType(null);
@@ -119,10 +132,12 @@ export function useKeyboardShortcuts({
     onTextDelete,
     onStickyDelete,
     onImageDelete,
+    onStrokeDelete,
     shapes,
     texts,
     stickyNotes,
     images,
+    strokes,
     handleUndo,
     handleRedo,
     pushAction,
@@ -132,6 +147,7 @@ export function useKeyboardShortcuts({
     setTexts,
     setStickyNotes,
     setImages,
+    setStrokes,
     setSelectedElementId,
     setSelectedElementType,
   ]);

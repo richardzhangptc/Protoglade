@@ -21,6 +21,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WhiteboardService } from './whiteboard.service';
 import { CreateStrokeDto } from './dto/create-stroke.dto';
+import { UpdateStrokeDto } from './dto/update-stroke.dto';
 import { CreateShapeDto } from './dto/create-shape.dto';
 import { UpdateShapeDto } from './dto/update-shape.dto';
 import { CreateTextDto } from './dto/create-text.dto';
@@ -51,6 +52,15 @@ export class WhiteboardController {
     @Body() dto: CreateStrokeDto,
   ) {
     return this.whiteboardService.createStroke(projectId, req.user.id, dto);
+  }
+
+  @Put('strokes/:id')
+  updateStroke(
+    @Req() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateStrokeDto,
+  ) {
+    return this.whiteboardService.updateStroke(id, req.user.id, dto);
   }
 
   @Delete('strokes/:id')

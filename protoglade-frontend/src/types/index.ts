@@ -112,7 +112,9 @@ export interface WhiteboardStroke {
   points: WhiteboardPoint[];
   color: string;
   size: number;
+  zIndex: number;
   createdAt: string;
+  updatedAt: string;
   createdBy: string;
   projectId: string;
 }

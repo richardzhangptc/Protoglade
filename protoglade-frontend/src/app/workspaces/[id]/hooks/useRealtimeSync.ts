@@ -116,18 +116,25 @@ export function useRealtimeSync({
       return next;
     });
     // Add to saved strokes
-    setStrokes((prev) => [
-      ...prev,
-      {
-        id: event.strokeId,
-        points: event.points,
-        color: event.color,
-        size: event.size,
-        createdAt: new Date().toISOString(),
-        createdBy: event.userId,
-        projectId: event.projectId,
-      },
-    ]);
+    setStrokes((prev) => {
+      // Defensive: avoid duplicating strokes if we ever receive the same event twice,
+      // or if the stroke was already loaded/persisted elsewhere.
+      if (prev.some((s) => s.id === event.strokeId)) return prev;
+      return [
+        ...prev,
+        {
+          id: event.strokeId,
+          points: event.points,
+          color: event.color,
+          size: event.size,
+          zIndex: event.zIndex ?? 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          createdBy: event.userId,
+          projectId: event.projectId,
+        },
+      ];
+    });
   }, [setRemoteStrokes, setStrokes]);
 
   const handleRemoteStrokeUndo = useCallback((event: StrokeUndoEvent) => {

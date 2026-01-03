@@ -156,7 +156,9 @@ model WhiteboardStroke {
   points    Json     // Array of {x, y} points
   color     String   @default("#000000")
   size      Float    @default(2)
+  zIndex    Int      @default(0)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   createdBy String   // User ID who created the stroke
 
   projectId String

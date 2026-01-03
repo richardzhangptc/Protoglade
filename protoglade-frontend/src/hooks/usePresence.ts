@@ -69,6 +69,7 @@ export interface StrokeEndEvent {
   points: WhiteboardPoint[];
   color: string;
   size: number;
+  zIndex?: number;
 }
 
 export interface StrokeUndoEvent {

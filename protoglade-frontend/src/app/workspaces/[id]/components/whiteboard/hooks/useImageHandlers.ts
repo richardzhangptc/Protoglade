@@ -5,9 +5,9 @@ interface UseImageHandlersOptions {
   images: ImageElement[];
   setImages: React.Dispatch<React.SetStateAction<ImageElement[]>>;
   selectedElementId: string | null;
-  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | null;
+  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null;
   setSelectedElementId: React.Dispatch<React.SetStateAction<string | null>>;
-  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | null>>;
+  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null>>;
   onImageUpdate?: (image: ImageElement) => void;
   onImageDelete?: (id: string) => void;
   pushHistory: (action: {

@@ -1,5 +1,5 @@
 import { WhiteboardPoint } from '@/types';
-import { ShapeElement } from './types';
+import { ShapeElement, StrokeElement } from './types';
 
 export function drawStroke(
   ctx: CanvasRenderingContext2D,
@@ -45,6 +45,63 @@ export function drawStroke(
 
   ctx.stroke();
   ctx.globalAlpha = 1;
+}
+
+export function drawStrokeWithSelection(
+  ctx: CanvasRenderingContext2D,
+  stroke: StrokeElement,
+  zoom: number
+): void {
+  // First draw the stroke itself
+  drawStroke(ctx, stroke.points, stroke.color, stroke.size);
+
+  // Then draw the selection bounding box
+  if (stroke.points.length === 0) return;
+
+  // Calculate bounding box
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const point of stroke.points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  // Add padding for stroke size
+  const padding = stroke.size / 2 + 4 / zoom;
+  const x = minX - padding;
+  const y = minY - padding;
+  const width = maxX - minX + padding * 2;
+  const height = maxY - minY + padding * 2;
+
+  // Draw selection border
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2 / zoom;
+  ctx.setLineDash([5 / zoom, 5 / zoom]);
+  ctx.strokeRect(x, y, width, height);
+  ctx.setLineDash([]);
+
+  // Draw corner handles
+  const handleSize = 8 / zoom;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2 / zoom;
+
+  const handles = [
+    { x: x, y: y }, // nw
+    { x: x + width, y: y }, // ne
+    { x: x + width, y: y + height }, // se
+    { x: x, y: y + height }, // sw
+  ];
+
+  handles.forEach((handle) => {
+    ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+    ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+  });
 }
 
 export function drawShape(

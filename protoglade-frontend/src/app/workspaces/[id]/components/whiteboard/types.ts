@@ -65,6 +65,14 @@ export interface ImageElement {
   zIndex: number;
 }
 
+export interface StrokeElement {
+  id: string;
+  points: WhiteboardPoint[];
+  color: string;
+  size: number;
+  zIndex: number;
+}
+
 export interface RemoteStroke {
   id: string;
   points: WhiteboardPoint[];

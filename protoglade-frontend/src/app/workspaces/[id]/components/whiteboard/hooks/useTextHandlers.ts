@@ -12,7 +12,7 @@ export interface UseTextHandlersOptions {
   editingTextId: string | null;
   setEditingTextId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedElementId: React.Dispatch<React.SetStateAction<string | null>>;
-  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | null>>;
+  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null>>;
   pushAction: (action: HistoryAction) => void;
   onTextUpdate?: (text: TextElement) => void;
 }

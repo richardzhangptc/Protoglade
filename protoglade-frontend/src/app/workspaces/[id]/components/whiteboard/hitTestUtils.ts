@@ -1,5 +1,5 @@
 import { WhiteboardPoint } from '@/types';
-import { ShapeElement, ResizeHandle } from './types';
+import { ShapeElement, StrokeElement, ResizeHandle } from './types';
 
 // Helper function for line hit testing
 export function pointToLineDistance(
@@ -124,5 +124,96 @@ export function normalizeShape(shape: ShapeElement): ShapeElement {
     normalized.height = Math.abs(normalized.height);
   }
   return normalized;
+}
+
+// Hit testing for strokes - check if point is near any segment of the stroke
+export function hitTestStroke(
+  point: WhiteboardPoint,
+  stroke: StrokeElement,
+  threshold: number = 10
+): boolean {
+  const points = stroke.points;
+  if (points.length < 2) {
+    // Single point stroke - check distance to that point
+    if (points.length === 1) {
+      const dx = point.x - points[0].x;
+      const dy = point.y - points[0].y;
+      return Math.sqrt(dx * dx + dy * dy) < threshold + stroke.size / 2;
+    }
+    return false;
+  }
+
+  // Check distance to each line segment
+  for (let i = 0; i < points.length - 1; i++) {
+    const dist = pointToLineDistance(point, points[i], points[i + 1]);
+    if (dist < threshold + stroke.size / 2) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Hit test all strokes and return the one that was hit (topmost by zIndex)
+export function hitTestStrokes(
+  point: WhiteboardPoint,
+  strokes: StrokeElement[]
+): { id: string; type: 'stroke' } | null {
+  // Sort by zIndex descending to check topmost first
+  const sortedStrokes = [...strokes].sort((a, b) => b.zIndex - a.zIndex);
+
+  for (const stroke of sortedStrokes) {
+    if (hitTestStroke(point, stroke)) {
+      return { id: stroke.id, type: 'stroke' };
+    }
+  }
+  return null;
+}
+
+// Get bounding box of a stroke
+export function getStrokeBounds(stroke: StrokeElement): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  if (stroke.points.length === 0) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const point of stroke.points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  // Add padding for stroke size
+  const padding = stroke.size / 2;
+  return {
+    x: minX - padding,
+    y: minY - padding,
+    width: maxX - minX + stroke.size,
+    height: maxY - minY + stroke.size,
+  };
+}
+
+// Translate all points in a stroke by an offset
+export function translateStroke(
+  stroke: StrokeElement,
+  dx: number,
+  dy: number
+): StrokeElement {
+  return {
+    ...stroke,
+    points: stroke.points.map((p) => ({
+      x: p.x + dx,
+      y: p.y + dy,
+    })),
+  };
 }
 

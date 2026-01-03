@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { WhiteboardPoint, WhiteboardStroke } from '@/types';
+import { WhiteboardPoint } from '@/types';
 import {
   ToolType,
   ResizeHandle,
@@ -7,9 +7,10 @@ import {
   TextElement,
   StickyNoteElement,
   ImageElement,
+  StrokeElement,
   STICKY_COLORS,
 } from '../types';
-import { hitTestResizeHandle, hitTestElement, getResizeCursor, normalizeShape } from '../hitTestUtils';
+import { hitTestResizeHandle, hitTestElement, hitTestStrokes, translateStroke, getResizeCursor, normalizeShape } from '../hitTestUtils';
 import { HistoryAction } from '../useHistory';
 
 // Helper to compute the next zIndex across all element types
@@ -17,13 +18,15 @@ function getNextZIndex(
   shapes: ShapeElement[],
   texts: TextElement[],
   stickyNotes: StickyNoteElement[],
-  images: ImageElement[]
+  images: ImageElement[],
+  strokes: StrokeElement[] = []
 ): number {
   const allZIndices = [
     ...shapes.map((s) => s.zIndex),
     ...texts.map((t) => t.zIndex),
     ...stickyNotes.map((s) => s.zIndex),
     ...images.map((i) => i.zIndex),
+    ...strokes.map((s) => s.zIndex),
   ];
   return allZIndices.length > 0 ? Math.max(...allZIndices) + 1 : 0;
 }
@@ -78,12 +81,14 @@ export interface UsePointerHandlersOptions {
   stickyNotes: StickyNoteElement[];
   setStickyNotes: React.Dispatch<React.SetStateAction<StickyNoteElement[]>>;
   images: ImageElement[];
+  strokes: StrokeElement[];
+  setStrokes: React.Dispatch<React.SetStateAction<StrokeElement[]>>;
 
   // Selection state
   selectedElementId: string | null;
   setSelectedElementId: React.Dispatch<React.SetStateAction<string | null>>;
-  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | null;
-  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | null>>;
+  selectedElementType: 'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null;
+  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null>>;
   isDragging: boolean;
   setIsDragging: React.Dispatch<React.SetStateAction<boolean>>;
   dragOffset: { x: number; y: number };
@@ -120,6 +125,7 @@ export interface UsePointerHandlersOptions {
   onShapeUpdate?: (shape: ShapeElement) => void;
   onTextCreate?: (text: TextElement) => void;
   onStickyCreate?: (sticky: StickyNoteElement) => void;
+  onStrokeUpdate?: (stroke: StrokeElement) => void;
 }
 
 export function usePointerHandlers(options: UsePointerHandlersOptions) {
@@ -160,6 +166,8 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
     stickyNotes,
     setStickyNotes,
     images,
+    strokes,
+    setStrokes,
     selectedElementId,
     setSelectedElementId,
     selectedElementType,
@@ -192,6 +200,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
     onShapeUpdate,
     onTextCreate,
     onStickyCreate,
+    onStrokeUpdate,
   } = options;
 
   const getCanvasPoint = useCallback((e: React.PointerEvent | React.MouseEvent): WhiteboardPoint => {
@@ -251,15 +260,36 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           }
         }
 
-        const hit = hitTestElement(point, shapes);
+        // Hit test all element types and find the topmost one by zIndex
+        const shapeHit = hitTestElement(point, shapes);
+        const strokeHit = hitTestStrokes(point, strokes);
+
+        // Determine which hit is topmost
+        let hit: { id: string; type: 'shape' | 'stroke' } | null = null;
+        if (shapeHit && strokeHit) {
+          const shapeZIndex = shapes.find((s) => s.id === shapeHit.id)?.zIndex ?? -1;
+          const strokeZIndex = strokes.find((s) => s.id === strokeHit.id)?.zIndex ?? -1;
+          hit = shapeZIndex > strokeZIndex ? shapeHit : strokeHit;
+        } else {
+          hit = shapeHit || strokeHit;
+        }
+
         if (hit) {
-          const shape = shapes.find((s) => s.id === hit.id);
           setSelectedElementId(hit.id);
           setSelectedElementType(hit.type);
           setIsDragging(true);
           setDragOffset({ x: point.x, y: point.y });
-          if (shape) {
-            setDragStartPosition({ x: shape.x, y: shape.y });
+          if (hit.type === 'shape') {
+            const shape = shapes.find((s) => s.id === hit.id);
+            if (shape) {
+              setDragStartPosition({ x: shape.x, y: shape.y });
+            }
+          } else if (hit.type === 'stroke') {
+            // For strokes, store the first point as start position for tracking movement
+            const stroke = strokes.find((s) => s.id === hit.id);
+            if (stroke && stroke.points.length > 0) {
+              setDragStartPosition({ x: stroke.points[0].x, y: stroke.points[0].y });
+            }
           }
         } else {
           setSelectedElementId(null);
@@ -281,7 +311,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           color: color,
           strokeWidth: size,
           filled: shapeFilled,
-          zIndex: getNextZIndex(shapes, texts, stickyNotes, images),
+          zIndex: getNextZIndex(shapes, texts, stickyNotes, images, strokes),
         };
         setCurrentShape(newShape);
         break;
@@ -309,7 +339,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           fontWeight: textFontWeight,
           color: color,
           align: textAlign,
-          zIndex: getNextZIndex(shapes, texts, stickyNotes, images),
+          zIndex: getNextZIndex(shapes, texts, stickyNotes, images, strokes),
         };
         setTexts((prev) => [...prev, newText]);
         pushAction({ type: 'text_create', text: newText });
@@ -333,7 +363,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           content: '',
           color: STICKY_COLORS[0],
           fontSize: 14,
-          zIndex: getNextZIndex(shapes, texts, stickyNotes, images),
+          zIndex: getNextZIndex(shapes, texts, stickyNotes, images, strokes),
         };
         setStickyNotes((prev) => [...prev, newSticky]);
         pushAction({ type: 'sticky_create', sticky: newSticky });
@@ -348,7 +378,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
     }
 
     canvas.setPointerCapture(e.pointerId);
-  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, texts, stickyNotes, images, zoom, editingTextId, editingStickyId, textFontSize, textFontWeight, textAlign, pushAction, onTextCreate, onStickyCreate, canvasRef, lastPanPoint, setShowPenOptions, setShowShapeOptions, setEditingTextId, setEditingStickyId, setIsPanning, setActiveResizeHandle, setResizeStartShape, setResizeStartPoint, setSelectedElementId, setSelectedElementType, setIsDragging, setDragOffset, setDragStartPosition, setIsDrawingShape, setShapeStartPoint, setCurrentShape, setCurrentStrokeId, setIsDrawing, setCurrentStroke, setTexts, setTextBeforeEdit, setStickyNotes, setStickyBeforeEdit]);
+  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, texts, stickyNotes, images, strokes, zoom, editingTextId, editingStickyId, textFontSize, textFontWeight, textAlign, pushAction, onTextCreate, onStickyCreate, canvasRef, lastPanPoint, setShowPenOptions, setShowShapeOptions, setEditingTextId, setEditingStickyId, setIsPanning, setActiveResizeHandle, setResizeStartShape, setResizeStartPoint, setSelectedElementId, setSelectedElementType, setIsDragging, setDragOffset, setDragStartPosition, setIsDrawingShape, setShapeStartPoint, setCurrentShape, setCurrentStrokeId, setIsDrawing, setCurrentStroke, setTexts, setTextBeforeEdit, setStickyNotes, setStickyBeforeEdit]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current;
@@ -425,7 +455,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
       return;
     }
 
-    // Handle dragging
+    // Handle dragging shapes
     if (isDragging && selectedElementId && selectedElementType === 'shape') {
       const dx = point.x - dragOffset.x;
       const dy = point.y - dragOffset.y;
@@ -433,6 +463,20 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
       setShapes((prev) =>
         prev.map((s) =>
           s.id === selectedElementId ? { ...s, x: s.x + dx, y: s.y + dy } : s
+        )
+      );
+      setDragOffset({ x: point.x, y: point.y });
+      return;
+    }
+
+    // Handle dragging strokes
+    if (isDragging && selectedElementId && selectedElementType === 'stroke') {
+      const dx = point.x - dragOffset.x;
+      const dy = point.y - dragOffset.y;
+
+      setStrokes((prev) =>
+        prev.map((s) =>
+          s.id === selectedElementId ? translateStroke(s, dx, dy) : s
         )
       );
       setDragOffset({ x: point.x, y: point.y });
@@ -466,7 +510,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
     } else {
       setHoveredResizeHandle(null);
     }
-  }, [isDrawing, isPanning, currentStrokeId, getCanvasPoint, onStrokePoint, onCursorMove, isDragging, selectedElementId, selectedElementType, dragOffset, isDrawingShape, shapeStartPoint, currentShape, activeResizeHandle, resizeStartShape, resizeStartPoint, activeTool, shapes, zoom, canvasRef, lastPanPoint, setPan, setShapes, setDragOffset, setCurrentShape, setCurrentStroke, setHoveredResizeHandle]);
+  }, [isDrawing, isPanning, currentStrokeId, getCanvasPoint, onStrokePoint, onCursorMove, isDragging, selectedElementId, selectedElementType, dragOffset, isDrawingShape, shapeStartPoint, currentShape, activeResizeHandle, resizeStartShape, resizeStartPoint, activeTool, shapes, strokes, zoom, canvasRef, lastPanPoint, setPan, setShapes, setStrokes, setDragOffset, setCurrentShape, setCurrentStroke, setHoveredResizeHandle]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current;
@@ -501,7 +545,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
       return;
     }
 
-    // End dragging
+    // End dragging shape
     if (isDragging && selectedElementId && selectedElementType === 'shape') {
       const shape = shapes.find((s) => s.id === selectedElementId);
       const dragStart = options.dragStartPosition;
@@ -515,6 +559,29 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           toY: shape.y,
         });
         onShapeUpdate?.(shape);
+      }
+      setIsDragging(false);
+      setDragStartPosition(null);
+      return;
+    }
+
+    // End dragging stroke
+    if (isDragging && selectedElementId && selectedElementType === 'stroke') {
+      const stroke = strokes.find((s) => s.id === selectedElementId);
+      const dragStart = options.dragStartPosition;
+      if (stroke && dragStart && stroke.points.length > 0) {
+        const currentFirstPoint = stroke.points[0];
+        if (currentFirstPoint.x !== dragStart.x || currentFirstPoint.y !== dragStart.y) {
+          pushAction({
+            type: 'stroke_move',
+            strokeId: selectedElementId,
+            fromX: dragStart.x,
+            fromY: dragStart.y,
+            toX: currentFirstPoint.x,
+            toY: currentFirstPoint.y,
+          });
+          onStrokeUpdate?.(stroke);
+        }
       }
       setIsDragging(false);
       setDragStartPosition(null);
@@ -540,23 +607,50 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
     // End pen drawing
     if (!isDrawing || !currentStrokeId || currentStroke.length === 0) return;
 
-    const newStroke: WhiteboardStroke = {
-      id: currentStrokeId,
-      points: currentStroke,
-      color,
-      size,
-      createdAt: new Date().toISOString(),
-      createdBy: '',
-      projectId: '',
-    };
+    const zIndex = getNextZIndex(shapes, texts, stickyNotes, images, strokes);
 
-    pushAction({ type: 'stroke_create', stroke: newStroke });
+    // IMPORTANT:
+    // The canvas renders from `strokes` (local StrokeElement[]), not from the persisted `WhiteboardStroke[]` prop.
+    // If we clear `currentStroke` before `strokes` contains the finalized stroke, it can flicker/disappear for a frame.
+    // So we commit the finalized stroke into local stroke state synchronously.
+    setStrokes((prev) => {
+      if (prev.some((s) => s.id === currentStrokeId)) return prev;
+      return [
+        ...prev,
+        {
+          id: currentStrokeId,
+          points: currentStroke,
+          color,
+          size,
+          zIndex,
+        },
+      ];
+    });
 
+    // History tracks the finalized stroke.
+    // Note: `HistoryAction` currently types `stroke_create.stroke` as `WhiteboardStroke`,
+    // so we include the persistence metadata fields even though they aren't used by undo/redo logic.
+    pushAction({
+      type: 'stroke_create',
+      stroke: {
+        id: currentStrokeId,
+        points: currentStroke,
+        color,
+        size,
+        zIndex,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: '',
+        projectId: '',
+      },
+    });
+
+    // Persist + broadcast (parent handler)
     onStrokeEnd(currentStrokeId, currentStroke, color, size);
     setIsDrawing(false);
     setCurrentStroke([]);
     setCurrentStrokeId(null);
-  }, [isDrawing, isPanning, currentStroke, color, size, currentStrokeId, onStrokeEnd, isDragging, isDrawingShape, currentShape, selectedElementId, selectedElementType, shapes, onShapeUpdate, onShapeCreate, activeResizeHandle, resizeStartShape, pushAction, canvasRef, setIsPanning, setShapes, setActiveResizeHandle, setResizeStartShape, setResizeStartPoint, setIsDragging, setDragStartPosition, setIsDrawingShape, setShapeStartPoint, setCurrentShape, setSelectedElementId, setSelectedElementType, setIsDrawing, setCurrentStroke, setCurrentStrokeId, options.dragStartPosition]);
+  }, [isDrawing, isPanning, currentStroke, color, size, currentStrokeId, onStrokeEnd, isDragging, isDrawingShape, currentShape, selectedElementId, selectedElementType, shapes, strokes, onShapeUpdate, onShapeCreate, onStrokeUpdate, activeResizeHandle, resizeStartShape, pushAction, canvasRef, setIsPanning, setShapes, setActiveResizeHandle, setResizeStartShape, setResizeStartPoint, setIsDragging, setDragStartPosition, setIsDrawingShape, setShapeStartPoint, setCurrentShape, setSelectedElementId, setSelectedElementType, setIsDrawing, setCurrentStroke, setCurrentStrokeId, options.dragStartPosition]);
 
   const handlePointerLeave = useCallback(() => {
     onCursorLeave();

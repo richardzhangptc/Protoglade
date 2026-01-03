@@ -71,7 +71,7 @@ export function useWhiteboardState(options: WhiteboardStateOptions = {}) {
 
   // Selection state
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [selectedElementType, setSelectedElementType] = useState<'shape' | 'text' | 'sticky' | 'image' | null>(null);
+  const [selectedElementType, setSelectedElementType] = useState<'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragStartPosition, setDragStartPosition] = useState<{ x: number; y: number } | null>(null);

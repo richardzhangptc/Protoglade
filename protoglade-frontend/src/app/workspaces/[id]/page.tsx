@@ -257,6 +257,10 @@ export default function WorkspacePage() {
     selectedProjectId,
     userId: user?.id,
     strokes,
+    shapes,
+    texts,
+    stickyNotes,
+    images,
     setStrokes,
     setShapes,
     setTexts,
@@ -356,6 +360,7 @@ export default function WorkspacePage() {
               onStickyDelete={handleStickyDelete}
               onImageUpdate={handleImageUpdate}
               onImageDelete={handleImageDelete}
+              onStrokeDelete={handleStrokeUndo}
             />
           )}
         </div>

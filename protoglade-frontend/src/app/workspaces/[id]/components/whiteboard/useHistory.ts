@@ -1,10 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
-import { ShapeElement, TextElement, StickyNoteElement, ImageElement } from './types';
+import { ShapeElement, TextElement, StickyNoteElement, ImageElement, StrokeElement } from './types';
 import { WhiteboardStroke } from '@/types';
 
 // Action types for undo/redo
 export type HistoryAction =
   | { type: 'stroke_create'; stroke: WhiteboardStroke }
+  | { type: 'stroke_delete'; stroke: StrokeElement }
+  | { type: 'stroke_move'; strokeId: string; fromX: number; fromY: number; toX: number; toY: number }
   | { type: 'shape_create'; shape: ShapeElement }
   | { type: 'shape_delete'; shape: ShapeElement }
   | { type: 'shape_move'; shapeId: string; fromX: number; fromY: number; toX: number; toY: number }

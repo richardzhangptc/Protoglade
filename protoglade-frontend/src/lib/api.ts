@@ -297,9 +297,22 @@ class ApiClient {
     points: Array<{ x: number; y: number }>;
     color: string;
     size: number;
+    zIndex?: number;
   }) {
     return this.request<import('@/types').WhiteboardStroke>(`/whiteboard/${projectId}/strokes`, {
       method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateWhiteboardStroke(strokeId: string, data: Partial<{
+    points: Array<{ x: number; y: number }>;
+    color: string;
+    size: number;
+    zIndex: number;
+  }>) {
+    return this.request<import('@/types').WhiteboardStroke>(`/whiteboard/strokes/${strokeId}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   }

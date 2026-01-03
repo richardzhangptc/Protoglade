@@ -11,7 +11,7 @@ export interface UseStickyHandlersOptions {
   setStickyBeforeEdit: React.Dispatch<React.SetStateAction<string>>;
   setEditingStickyId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedElementId: React.Dispatch<React.SetStateAction<string | null>>;
-  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | null>>;
+  setSelectedElementType: React.Dispatch<React.SetStateAction<'shape' | 'text' | 'sticky' | 'image' | 'stroke' | null>>;
   pushAction: (action: HistoryAction) => void;
   onStickyUpdate?: (sticky: StickyNoteElement) => void;
 }

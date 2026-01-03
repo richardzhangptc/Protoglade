@@ -11,6 +11,10 @@ export interface UseWhiteboardOperationsOptions {
   selectedProjectId: string | null;
   userId: string | undefined;
   strokes: WhiteboardStroke[];
+  shapes: Array<{ zIndex: number }>;
+  texts: Array<{ zIndex: number }>;
+  stickyNotes: Array<{ zIndex: number }>;
+  images: Array<{ zIndex: number }>;
   setStrokes: React.Dispatch<React.SetStateAction<WhiteboardStroke[]>>;
   setShapes: React.Dispatch<React.SetStateAction<any[]>>;
   setTexts: React.Dispatch<React.SetStateAction<any[]>>;
@@ -25,9 +29,32 @@ export interface UseWhiteboardOperationsOptions {
   emitCursorMove: (cursor: { x: number; y: number; isDragging: boolean; dragTaskId: string | null; dragTaskTitle: string | null }) => void;
 }
 
+// Helper to compute the next zIndex across all element types
+function getNextZIndex(
+  strokes: Array<{ zIndex: number }>,
+  shapes: Array<{ zIndex: number }>,
+  texts: Array<{ zIndex: number }>,
+  stickyNotes: Array<{ zIndex: number }>,
+  images: Array<{ zIndex: number }>
+): number {
+  const allZIndices = [
+    ...strokes.map((s) => s.zIndex),
+    ...shapes.map((s) => s.zIndex),
+    ...texts.map((t) => t.zIndex),
+    ...stickyNotes.map((s) => s.zIndex),
+    ...images.map((i) => i.zIndex),
+  ];
+  return allZIndices.length > 0 ? Math.max(...allZIndices) + 1 : 0;
+}
+
 export function useWhiteboardOperations({
   selectedProjectId,
   userId,
+  strokes,
+  shapes,
+  texts,
+  stickyNotes,
+  images,
   setStrokes,
   setShapes,
   setTexts,
@@ -52,13 +79,18 @@ export function useWhiteboardOperations({
   const handleStrokeEnd = useCallback(async (strokeId: string, points: WhiteboardPoint[], color: string, size: number) => {
     if (!selectedProjectId) return;
 
-    // Add stroke to local state immediately
+    // Calculate zIndex for the new stroke (use current max + 1 across all element types)
+    const zIndex = getNextZIndex(strokes, shapes, texts, stickyNotes, images);
+
+    // Add stroke to local state immediately with correct zIndex
     const newStroke: WhiteboardStroke = {
       id: strokeId,
       points,
       color,
       size,
+      zIndex,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       createdBy: userId || '',
       projectId: selectedProjectId,
     };
@@ -67,13 +99,13 @@ export function useWhiteboardOperations({
     // Emit to other users
     emitStrokeEnd(strokeId, points, color, size);
 
-    // Save to database
+    // Save to database with the calculated zIndex
     try {
-      await api.createWhiteboardStroke(selectedProjectId, { points, color, size });
+      await api.createWhiteboardStroke(selectedProjectId, { points, color, size, zIndex });
     } catch (error) {
       console.error('Failed to save stroke:', error);
     }
-  }, [selectedProjectId, userId, setStrokes, emitStrokeEnd]);
+  }, [selectedProjectId, userId, strokes, shapes, texts, stickyNotes, images, setStrokes, emitStrokeEnd]);
 
   const handleStrokeUndo = useCallback(async (strokeId: string) => {
     if (!selectedProjectId) return;

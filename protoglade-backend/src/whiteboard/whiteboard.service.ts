@@ -7,6 +7,7 @@ import type { Readable } from 'stream';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../s3/s3.service';
 import { CreateStrokeDto } from './dto/create-stroke.dto';
+import { UpdateStrokeDto } from './dto/update-stroke.dto';
 import { CreateShapeDto } from './dto/create-shape.dto';
 import { UpdateShapeDto } from './dto/update-shape.dto';
 import { CreateTextDto } from './dto/create-text.dto';
@@ -37,7 +38,7 @@ export class WhiteboardService {
 
     return this.prisma.whiteboardStroke.findMany({
       where: { projectId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
     });
   }
 
@@ -58,9 +59,29 @@ export class WhiteboardService {
         points: dto.points,
         color: dto.color,
         size: dto.size,
+        zIndex: dto.zIndex ?? 0,
         createdBy: userId,
         projectId,
       },
+    });
+  }
+
+  // Update a stroke (for moving, color changes, etc.)
+  async updateStroke(strokeId: string, userId: string, dto: UpdateStrokeDto) {
+    const stroke = await this.prisma.whiteboardStroke.findUnique({
+      where: { id: strokeId },
+      include: { project: true },
+    });
+
+    if (!stroke) {
+      throw new NotFoundException('Stroke not found');
+    }
+
+    await this.checkWorkspaceMembership(stroke.project.workspaceId, userId);
+
+    return this.prisma.whiteboardStroke.update({
+      where: { id: strokeId },
+      data: dto,
     });
   }
 

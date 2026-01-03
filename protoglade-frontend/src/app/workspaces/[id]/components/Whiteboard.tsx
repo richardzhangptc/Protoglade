@@ -8,6 +8,7 @@ import {
   TextElement,
   StickyNoteElement,
   ImageElement,
+  StrokeElement,
   RemoteStroke,
   RemoteCursor,
 } from './whiteboard/types';
@@ -65,6 +66,8 @@ interface WhiteboardProps {
   onStickyDelete?: (id: string) => void;
   onImageUpdate?: (image: ImageElement) => void;
   onImageDelete?: (id: string) => void;
+  onStrokeUpdate?: (stroke: StrokeElement) => void;
+  onStrokeDelete?: (id: string) => void;
 }
 
 export function Whiteboard({
@@ -96,9 +99,96 @@ export function Whiteboard({
   onStickyDelete,
   onImageUpdate,
   onImageDelete,
+  onStrokeUpdate,
+  onStrokeDelete,
 }: WhiteboardProps) {
   // Image upload state
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  // Local strokes state (converted from WhiteboardStroke to StrokeElement for selection/dragging)
+  const [localStrokes, setLocalStrokes] = useState<StrokeElement[]>(() =>
+    strokes.map((s) => ({
+      id: s.id,
+      points: s.points,
+      color: s.color,
+      size: s.size,
+      zIndex: s.zIndex,
+    }))
+  );
+
+  // Sync strokes prop to local state - only update when there are actual changes
+  useEffect(() => {
+    setLocalStrokes((prevLocal) => {
+      // Build a map of current prop strokes for quick lookup
+      const propStrokesMap = new Map(strokes.map((s) => [s.id, s]));
+      const localStrokesMap = new Map(prevLocal.map((s) => [s.id, s]));
+
+      // Check if anything actually changed
+      const propIds = new Set(strokes.map((s) => s.id));
+      const localIds = new Set(prevLocal.map((s) => s.id));
+
+      // Find strokes to add (in props but not in local)
+      const toAdd: StrokeElement[] = [];
+      for (const stroke of strokes) {
+        if (!localIds.has(stroke.id)) {
+          toAdd.push({
+            id: stroke.id,
+            points: stroke.points,
+            color: stroke.color,
+            size: stroke.size,
+            zIndex: stroke.zIndex,
+          });
+        }
+      }
+
+      // Find strokes to remove (in local but not in props)
+      const toRemoveIds = new Set<string>();
+      for (const id of localIds) {
+        if (!propIds.has(id)) {
+          toRemoveIds.add(id);
+        }
+      }
+
+      // If nothing changed, return previous state to avoid re-render
+      if (toAdd.length === 0 && toRemoveIds.size === 0) {
+        // Also check if any existing strokes have updated zIndex from props
+        let hasZIndexChange = false;
+        for (const stroke of strokes) {
+          const localStroke = localStrokesMap.get(stroke.id);
+          if (localStroke && localStroke.zIndex !== stroke.zIndex) {
+            hasZIndexChange = true;
+            break;
+          }
+        }
+        if (!hasZIndexChange) {
+          return prevLocal;
+        }
+      }
+
+      // Build new array: keep existing local strokes (preserving local modifications),
+      // remove deleted ones, add new ones, and update zIndex from props
+      const result: StrokeElement[] = [];
+      for (const local of prevLocal) {
+        if (!toRemoveIds.has(local.id)) {
+          const propStroke = propStrokesMap.get(local.id);
+          if (propStroke) {
+            // Update zIndex from props but keep local points (for drag operations)
+            result.push({
+              ...local,
+              zIndex: propStroke.zIndex,
+            });
+          } else {
+            result.push(local);
+          }
+        }
+      }
+
+      // Add new strokes
+      result.push(...toAdd);
+
+      return result;
+    });
+  }, [strokes]);
 
   // Centralized state management
   const state = useWhiteboardState({
@@ -291,6 +381,8 @@ export function Whiteboard({
     stickyNotes,
     setStickyNotes,
     images,
+    strokes: localStrokes,
+    setStrokes: setLocalStrokes,
     selectedElementId,
     setSelectedElementId,
     selectedElementType,
@@ -325,6 +417,7 @@ export function Whiteboard({
     onShapeUpdate,
     onTextCreate,
     onStickyCreate,
+    onStrokeUpdate,
   });
 
   // Canvas setup hooks
@@ -337,7 +430,7 @@ export function Whiteboard({
     zoom,
     shapes,
     currentShape,
-    strokes,
+    strokes: localStrokes,
     remoteStrokes,
     currentStroke,
     color,
@@ -357,10 +450,12 @@ export function Whiteboard({
     texts,
     stickyNotes,
     images,
+    strokes: localStrokes,
     setShapes,
     setTexts,
     setStickyNotes,
     setImages,
+    setStrokes: setLocalStrokes,
     setSelectedElementId,
     setSelectedElementType,
     pushAction,
@@ -370,6 +465,7 @@ export function Whiteboard({
     onTextDelete,
     onStickyDelete,
     onImageDelete,
+    onStrokeDelete,
   });
 
   // Initialize shapes from props
