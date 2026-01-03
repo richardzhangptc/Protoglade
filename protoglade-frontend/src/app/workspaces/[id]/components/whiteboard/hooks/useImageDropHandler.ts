@@ -1,13 +1,33 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { validateImageFile, getImageDimensions } from '../imageUpload';
-import { ImageElement } from '../types';
+import { ImageElement, ShapeElement, TextElement, StickyNoteElement } from '../types';
 import { api } from '@/lib/api';
+
+// Helper to compute the next zIndex across all element types
+function getNextZIndex(
+  shapes: ShapeElement[],
+  texts: TextElement[],
+  stickyNotes: StickyNoteElement[],
+  images: ImageElement[]
+): number {
+  const allZIndices = [
+    ...shapes.map((s) => s.zIndex),
+    ...texts.map((t) => t.zIndex),
+    ...stickyNotes.map((s) => s.zIndex),
+    ...images.map((i) => i.zIndex),
+  ];
+  return allZIndices.length > 0 ? Math.max(...allZIndices) + 1 : 0;
+}
 
 interface UseImageDropHandlerOptions {
   projectId: string;
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   pan: { x: number; y: number };
+  shapes: ShapeElement[];
+  texts: TextElement[];
+  stickyNotes: StickyNoteElement[];
+  images: ImageElement[];
   onImageAdd: (image: ImageElement) => void;
 }
 
@@ -16,6 +36,10 @@ export function useImageDropHandler({
   containerRef,
   zoom,
   pan,
+  shapes,
+  texts,
+  stickyNotes,
+  images,
   onImageAdd,
 }: UseImageDropHandlerOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -97,6 +121,9 @@ export function useImageDropHandler({
       // Generate a temporary ID
       const tempId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+      // Compute the next zIndex
+      const zIndex = getNextZIndex(shapes, texts, stickyNotes, images);
+
       // Upload the image
       const uploadedImage = await api.uploadWhiteboardImage(projectId, file, {
         id: tempId,
@@ -104,6 +131,7 @@ export function useImageDropHandler({
         y,
         width,
         height,
+        zIndex,
       });
 
       // Add to canvas
@@ -115,6 +143,7 @@ export function useImageDropHandler({
         y: uploadedImage.y,
         width: uploadedImage.width,
         height: uploadedImage.height,
+        zIndex: uploadedImage.zIndex,
       });
     } catch (error) {
       console.error('Failed to upload image:', error);
@@ -123,7 +152,7 @@ export function useImageDropHandler({
     } finally {
       setIsUploading(false);
     }
-  }, [containerRef, zoom, pan, projectId, onImageAdd]);
+  }, [containerRef, zoom, pan, projectId, shapes, texts, stickyNotes, images, onImageAdd]);
 
   // Set up event listeners
   useEffect(() => {

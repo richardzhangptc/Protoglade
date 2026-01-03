@@ -6,4 +6,5 @@ export class UpdateShapeDto {
   color?: string;
   strokeWidth?: number;
   filled?: boolean;
+  zIndex?: number;
 }

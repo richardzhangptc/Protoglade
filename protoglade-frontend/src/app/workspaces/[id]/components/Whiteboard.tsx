@@ -240,6 +240,10 @@ export function Whiteboard({
     containerRef,
     zoom,
     pan,
+    shapes,
+    texts,
+    stickyNotes,
+    images,
     onImageAdd: handleImageAdd,
   });
 
@@ -286,6 +290,7 @@ export function Whiteboard({
     setTexts,
     stickyNotes,
     setStickyNotes,
+    images,
     selectedElementId,
     setSelectedElementId,
     selectedElementType,
@@ -460,6 +465,15 @@ export function Whiteboard({
       // Generate a temporary ID
       const tempId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+      // Compute the next zIndex across all element types
+      const allZIndices = [
+        ...shapes.map((s) => s.zIndex),
+        ...texts.map((t) => t.zIndex),
+        ...stickyNotes.map((s) => s.zIndex),
+        ...images.map((i) => i.zIndex),
+      ];
+      const zIndex = allZIndices.length > 0 ? Math.max(...allZIndices) + 1 : 0;
+
       // Upload the image
       const uploadedImage = await api.uploadWhiteboardImage(projectId, file, {
         id: tempId,
@@ -467,6 +481,7 @@ export function Whiteboard({
         y: centerY,
         width,
         height,
+        zIndex,
       });
 
       // Add to canvas
@@ -478,13 +493,14 @@ export function Whiteboard({
         y: uploadedImage.y,
         width: uploadedImage.width,
         height: uploadedImage.height,
+        zIndex: uploadedImage.zIndex,
       });
     } catch (error) {
       console.error('Failed to upload image:', error);
     } finally {
       setIsUploadingImage(false);
     }
-  }, [projectId, pan, zoom, containerRef, handleImageAdd]);
+  }, [projectId, pan, zoom, containerRef, shapes, texts, stickyNotes, images, handleImageAdd]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative">
@@ -499,79 +515,86 @@ export function Whiteboard({
         onPointerLeave={handlePointerLeave}
       />
 
-      {/* Text boxes layer */}
+      {/* All elements layer - sorted by zIndex */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {texts.map((text) => (
-          <div key={text.id} className="pointer-events-auto">
-            <TextBox
-              element={text}
-              isSelected={selectedElementId === text.id}
-              isEditing={editingTextId === text.id}
-              zoom={zoom}
-              pan={pan}
-              onSelect={() => handleTextSelect(text.id)}
-              onStartEdit={() => handleTextStartEdit(text.id)}
-              onEndEdit={(content) => handleTextEndEdit(text.id, content)}
-              onCancelEdit={handleTextCancelEdit}
-              onMove={(x, y) => {
-                if (!dragStartPosition) {
-                  setDragStartPosition({ x: text.x, y: text.y });
-                }
-                handleTextMove(text.id, x, y);
-              }}
-              onMoveEnd={() => handleTextMoveEnd(text.id)}
-              onResize={(w, h, fontSize) => handleTextResize(text.id, w, h, fontSize)}
-              onResizeEnd={() => handleTextResizeEnd(text.id)}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Sticky notes layer */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {stickyNotes.map((sticky) => (
-          <div key={sticky.id} className="pointer-events-auto">
-            <StickyNote
-              element={sticky}
-              isSelected={selectedElementId === sticky.id}
-              isEditing={editingStickyId === sticky.id}
-              zoom={zoom}
-              pan={pan}
-              onSelect={() => handleStickySelect(sticky.id)}
-              onStartEdit={() => handleStickyStartEdit(sticky.id)}
-              onEndEdit={(content) => handleStickyEndEdit(sticky.id, content)}
-              onCancelEdit={handleStickyCancelEdit}
-              onMove={(x, y) => {
-                if (!dragStartPosition) {
-                  setDragStartPosition({ x: sticky.x, y: sticky.y });
-                }
-                handleStickyMove(sticky.id, x, y);
-              }}
-              onMoveEnd={() => handleStickyMoveEnd(sticky.id)}
-              onResize={(w, h, fontSize) => handleStickyResize(sticky.id, w, h, fontSize)}
-              onResizeEnd={() => handleStickyResizeEnd(sticky.id)}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Images layer */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {images.map((image) => (
-          <div key={image.id} className="pointer-events-auto">
-            <WhiteboardImage
-              element={image}
-              isSelected={selectedElementId === image.id}
-              zoom={zoom}
-              pan={pan}
-              onSelect={() => handleImageSelect(image.id)}
-              onMove={(x, y) => handleImageMove(image.id, x, y)}
-              onMoveEnd={handleImageMoveEnd}
-              onResize={(w, h) => handleImageResize(image.id, w, h)}
-              onResizeEnd={handleImageResizeEnd}
-            />
-          </div>
-        ))}
+        {[
+          ...texts.map((text) => ({ type: 'text' as const, element: text, zIndex: text.zIndex })),
+          ...stickyNotes.map((sticky) => ({ type: 'sticky' as const, element: sticky, zIndex: sticky.zIndex })),
+          ...images.map((image) => ({ type: 'image' as const, element: image, zIndex: image.zIndex })),
+        ]
+          .sort((a, b) => a.zIndex - b.zIndex)
+          .map((item) => {
+            if (item.type === 'text') {
+              const text = item.element;
+              return (
+                <div key={text.id} className="pointer-events-auto" style={{ zIndex: text.zIndex }}>
+                  <TextBox
+                    element={text}
+                    isSelected={selectedElementId === text.id}
+                    isEditing={editingTextId === text.id}
+                    zoom={zoom}
+                    pan={pan}
+                    onSelect={() => handleTextSelect(text.id)}
+                    onStartEdit={() => handleTextStartEdit(text.id)}
+                    onEndEdit={(content) => handleTextEndEdit(text.id, content)}
+                    onCancelEdit={handleTextCancelEdit}
+                    onMove={(x, y) => {
+                      if (!dragStartPosition) {
+                        setDragStartPosition({ x: text.x, y: text.y });
+                      }
+                      handleTextMove(text.id, x, y);
+                    }}
+                    onMoveEnd={() => handleTextMoveEnd(text.id)}
+                    onResize={(w, h, fontSize) => handleTextResize(text.id, w, h, fontSize)}
+                    onResizeEnd={() => handleTextResizeEnd(text.id)}
+                  />
+                </div>
+              );
+            } else if (item.type === 'sticky') {
+              const sticky = item.element;
+              return (
+                <div key={sticky.id} className="pointer-events-auto" style={{ zIndex: sticky.zIndex }}>
+                  <StickyNote
+                    element={sticky}
+                    isSelected={selectedElementId === sticky.id}
+                    isEditing={editingStickyId === sticky.id}
+                    zoom={zoom}
+                    pan={pan}
+                    onSelect={() => handleStickySelect(sticky.id)}
+                    onStartEdit={() => handleStickyStartEdit(sticky.id)}
+                    onEndEdit={(content) => handleStickyEndEdit(sticky.id, content)}
+                    onCancelEdit={handleStickyCancelEdit}
+                    onMove={(x, y) => {
+                      if (!dragStartPosition) {
+                        setDragStartPosition({ x: sticky.x, y: sticky.y });
+                      }
+                      handleStickyMove(sticky.id, x, y);
+                    }}
+                    onMoveEnd={() => handleStickyMoveEnd(sticky.id)}
+                    onResize={(w, h, fontSize) => handleStickyResize(sticky.id, w, h, fontSize)}
+                    onResizeEnd={() => handleStickyResizeEnd(sticky.id)}
+                  />
+                </div>
+              );
+            } else {
+              const image = item.element;
+              return (
+                <div key={image.id} className="pointer-events-auto" style={{ zIndex: image.zIndex }}>
+                  <WhiteboardImage
+                    element={image}
+                    isSelected={selectedElementId === image.id}
+                    zoom={zoom}
+                    pan={pan}
+                    onSelect={() => handleImageSelect(image.id)}
+                    onMove={(x, y) => handleImageMove(image.id, x, y)}
+                    onMoveEnd={handleImageMoveEnd}
+                    onResize={(w, h) => handleImageResize(image.id, w, h)}
+                    onResizeEnd={handleImageResizeEnd}
+                  />
+                </div>
+              );
+            }
+          })}
       </div>
 
       {/* Drag overlay */}

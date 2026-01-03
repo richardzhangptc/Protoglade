@@ -7,4 +7,5 @@ export class CreateShapeDto {
   color: string;
   strokeWidth: number;
   filled: boolean;
+  zIndex?: number;
 }

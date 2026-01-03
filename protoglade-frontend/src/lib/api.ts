@@ -335,6 +335,7 @@ class ApiClient {
     color: string;
     strokeWidth: number;
     filled: boolean;
+    zIndex?: number;
   }) {
     return this.request<import('@/types').WhiteboardShape>(`/whiteboard/${projectId}/shapes`, {
       method: 'POST',
@@ -350,6 +351,7 @@ class ApiClient {
     color: string;
     strokeWidth: number;
     filled: boolean;
+    zIndex: number;
   }>) {
     return this.request<import('@/types').WhiteboardShape>(`/whiteboard/shapes/${id}`, {
       method: 'PUT',
@@ -375,6 +377,7 @@ class ApiClient {
     fontWeight: 'normal' | 'bold';
     color: string;
     align: 'left' | 'center' | 'right';
+    zIndex?: number;
   }) {
     return this.request<import('@/types').WhiteboardText>(`/whiteboard/${projectId}/texts`, {
       method: 'POST',
@@ -392,6 +395,7 @@ class ApiClient {
     fontWeight: 'normal' | 'bold';
     color: string;
     align: 'left' | 'center' | 'right';
+    zIndex: number;
   }>) {
     return this.request<import('@/types').WhiteboardText>(`/whiteboard/texts/${id}`, {
       method: 'PUT',
@@ -414,6 +418,7 @@ class ApiClient {
     height: number;
     content: string;
     color: string;
+    zIndex?: number;
   }) {
     return this.request<import('@/types').WhiteboardStickyNote>(`/whiteboard/${projectId}/sticky-notes`, {
       method: 'POST',
@@ -428,6 +433,7 @@ class ApiClient {
     height: number;
     content: string;
     color: string;
+    zIndex: number;
   }>) {
     return this.request<import('@/types').WhiteboardStickyNote>(`/whiteboard/sticky-notes/${id}`, {
       method: 'PUT',
@@ -452,6 +458,7 @@ class ApiClient {
     y?: number;
     width?: number;
     height?: number;
+    zIndex?: number;
   }) {
     const token = this.getToken();
     const formData = new FormData();
@@ -461,6 +468,7 @@ class ApiClient {
     if (data.y !== undefined) formData.append('y', String(data.y));
     if (data.width !== undefined) formData.append('width', String(data.width));
     if (data.height !== undefined) formData.append('height', String(data.height));
+    if (data.zIndex !== undefined) formData.append('zIndex', String(data.zIndex));
 
     const response = await fetch(`${API_URL}/whiteboard/${projectId}/images`, {
       method: 'POST',
@@ -483,6 +491,7 @@ class ApiClient {
     y: number;
     width: number;
     height: number;
+    zIndex: number;
   }>) {
     return this.request<import('@/types').WhiteboardImage>(`/whiteboard/images/${id}`, {
       method: 'PUT',

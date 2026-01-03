@@ -25,4 +25,9 @@ export class CreateImageDto {
   @Transform(({ value }) => value !== undefined ? parseFloat(value) : undefined)
   @IsNumber()
   height?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value !== undefined ? parseInt(value, 10) : undefined)
+  @IsNumber()
+  zIndex?: number;
 }

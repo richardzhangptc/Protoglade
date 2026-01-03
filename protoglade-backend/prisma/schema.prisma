@@ -175,6 +175,7 @@ model WhiteboardShape {
   color       String   @default("#000000")
   strokeWidth Float    @default(2)
   filled      Boolean  @default(false)
+  zIndex      Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdBy   String   // User ID who created the shape
@@ -196,6 +197,7 @@ model WhiteboardText {
   fontWeight String   @default("normal") // "normal" | "bold"
   color      String   @default("#000000")
   align      String   @default("left")   // "left" | "center" | "right"
+  zIndex     Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   createdBy  String   // User ID who created the text
@@ -215,6 +217,7 @@ model WhiteboardStickyNote {
   content   String   @default("")
   color     String   @default("#fef08a") // Default yellow
   fontSize  Int      @default(14)
+  zIndex    Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String   // User ID who created the sticky note
@@ -233,6 +236,7 @@ model WhiteboardImage {
   y         Float    @default(0)
   width     Float
   height    Float
+  zIndex    Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String   // User ID who created the image

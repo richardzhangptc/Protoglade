@@ -25,6 +25,7 @@ export interface ShapeElement {
   color: string;
   strokeWidth: number;
   filled: boolean;
+  zIndex: number;
 }
 
 export interface TextElement {
@@ -38,6 +39,7 @@ export interface TextElement {
   fontWeight: 'normal' | 'bold';
   color: string;
   align: 'left' | 'center' | 'right';
+  zIndex: number;
 }
 
 export interface StickyNoteElement {
@@ -49,6 +51,7 @@ export interface StickyNoteElement {
   content: string;
   color: string; // Background color
   fontSize: number; // Font size in pixels
+  zIndex: number;
 }
 
 export interface ImageElement {
@@ -59,6 +62,7 @@ export interface ImageElement {
   y: number;
   width: number;
   height: number;
+  zIndex: number;
 }
 
 export interface RemoteStroke {

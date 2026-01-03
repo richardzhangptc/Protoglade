@@ -129,6 +129,7 @@ export interface WhiteboardShape {
   color: string;
   strokeWidth: number;
   filled: boolean;
+  zIndex: number;
   createdAt: string;
   createdBy: string;
   projectId: string;
@@ -145,6 +146,7 @@ export interface WhiteboardText {
   fontWeight: 'normal' | 'bold';
   color: string;
   align: 'left' | 'center' | 'right';
+  zIndex: number;
   createdAt: string;
   createdBy: string;
   projectId: string;
@@ -159,6 +161,7 @@ export interface WhiteboardStickyNote {
   content: string;
   color: string;
   fontSize: number;
+  zIndex: number;
   createdAt: string;
   createdBy: string;
   projectId: string;
@@ -172,6 +175,7 @@ export interface WhiteboardImage {
   y: number;
   width: number;
   height: number;
+  zIndex: number;
   createdAt: string;
   updatedAt: string;
   createdBy: string;

@@ -7,5 +7,6 @@ export class CreateStickyDto {
   content: string;
   color: string;
   fontSize?: number;
+  zIndex?: number;
 }
 

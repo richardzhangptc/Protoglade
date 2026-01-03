@@ -8,6 +8,7 @@ export class UpdateTextDto {
   fontWeight?: 'normal' | 'bold';
   color?: string;
   align?: 'left' | 'center' | 'right';
+  zIndex?: number;
 }
 
 

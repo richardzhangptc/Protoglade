@@ -122,19 +122,19 @@ export class WhiteboardService {
     const [shapes, texts, stickyNotes, images] = await Promise.all([
       this.prisma.whiteboardShape.findMany({
         where: { projectId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
       }),
       this.prisma.whiteboardText.findMany({
         where: { projectId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
       }),
       this.prisma.whiteboardStickyNote.findMany({
         where: { projectId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
       }),
       this.prisma.whiteboardImage.findMany({
         where: { projectId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
       }),
     ]);
 
@@ -163,6 +163,7 @@ export class WhiteboardService {
         color: dto.color,
         strokeWidth: dto.strokeWidth,
         filled: dto.filled,
+        zIndex: dto.zIndex ?? 0,
         createdBy: userId,
         projectId,
       },
@@ -230,6 +231,7 @@ export class WhiteboardService {
         fontWeight: dto.fontWeight ?? 'normal',
         color: dto.color ?? '#000000',
         align: dto.align ?? 'left',
+        zIndex: dto.zIndex ?? 0,
         createdBy: userId,
         projectId,
       },
@@ -294,6 +296,7 @@ export class WhiteboardService {
         height: dto.height ?? 200,
         content: dto.content ?? '',
         color: dto.color ?? '#fef08a',
+        zIndex: dto.zIndex ?? 0,
         createdBy: userId,
         projectId,
       },
@@ -387,6 +390,7 @@ export class WhiteboardService {
         y: dto.y ?? 0,
         width: dto.width ?? 200,
         height: dto.height ?? 200,
+        zIndex: dto.zIndex ?? 0,
         createdBy: userId,
         projectId,
       },

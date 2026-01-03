@@ -6,10 +6,27 @@ import {
   ShapeElement,
   TextElement,
   StickyNoteElement,
+  ImageElement,
   STICKY_COLORS,
 } from '../types';
 import { hitTestResizeHandle, hitTestElement, getResizeCursor, normalizeShape } from '../hitTestUtils';
 import { HistoryAction } from '../useHistory';
+
+// Helper to compute the next zIndex across all element types
+function getNextZIndex(
+  shapes: ShapeElement[],
+  texts: TextElement[],
+  stickyNotes: StickyNoteElement[],
+  images: ImageElement[]
+): number {
+  const allZIndices = [
+    ...shapes.map((s) => s.zIndex),
+    ...texts.map((t) => t.zIndex),
+    ...stickyNotes.map((s) => s.zIndex),
+    ...images.map((i) => i.zIndex),
+  ];
+  return allZIndices.length > 0 ? Math.max(...allZIndices) + 1 : 0;
+}
 
 export interface UsePointerHandlersOptions {
   // Refs
@@ -60,6 +77,7 @@ export interface UsePointerHandlersOptions {
   setTexts: React.Dispatch<React.SetStateAction<TextElement[]>>;
   stickyNotes: StickyNoteElement[];
   setStickyNotes: React.Dispatch<React.SetStateAction<StickyNoteElement[]>>;
+  images: ImageElement[];
 
   // Selection state
   selectedElementId: string | null;
@@ -141,6 +159,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
     setTexts,
     stickyNotes,
     setStickyNotes,
+    images,
     selectedElementId,
     setSelectedElementId,
     selectedElementType,
@@ -262,6 +281,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           color: color,
           strokeWidth: size,
           filled: shapeFilled,
+          zIndex: getNextZIndex(shapes, texts, stickyNotes, images),
         };
         setCurrentShape(newShape);
         break;
@@ -289,6 +309,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           fontWeight: textFontWeight,
           color: color,
           align: textAlign,
+          zIndex: getNextZIndex(shapes, texts, stickyNotes, images),
         };
         setTexts((prev) => [...prev, newText]);
         pushAction({ type: 'text_create', text: newText });
@@ -312,6 +333,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
           content: '',
           color: STICKY_COLORS[0],
           fontSize: 14,
+          zIndex: getNextZIndex(shapes, texts, stickyNotes, images),
         };
         setStickyNotes((prev) => [...prev, newSticky]);
         pushAction({ type: 'sticky_create', sticky: newSticky });
@@ -326,7 +348,7 @@ export function usePointerHandlers(options: UsePointerHandlersOptions) {
     }
 
     canvas.setPointerCapture(e.pointerId);
-  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, zoom, editingTextId, editingStickyId, textFontSize, textFontWeight, textAlign, pushAction, onTextCreate, onStickyCreate, canvasRef, lastPanPoint, setShowPenOptions, setShowShapeOptions, setEditingTextId, setEditingStickyId, setIsPanning, setActiveResizeHandle, setResizeStartShape, setResizeStartPoint, setSelectedElementId, setSelectedElementType, setIsDragging, setDragOffset, setDragStartPosition, setIsDrawingShape, setShapeStartPoint, setCurrentShape, setCurrentStrokeId, setIsDrawing, setCurrentStroke, setTexts, setTextBeforeEdit, setStickyNotes, setStickyBeforeEdit]);
+  }, [activeTool, color, size, getCanvasPoint, onStrokeStart, selectedShapeType, shapeFilled, selectedElementId, selectedElementType, shapes, texts, stickyNotes, images, zoom, editingTextId, editingStickyId, textFontSize, textFontWeight, textAlign, pushAction, onTextCreate, onStickyCreate, canvasRef, lastPanPoint, setShowPenOptions, setShowShapeOptions, setEditingTextId, setEditingStickyId, setIsPanning, setActiveResizeHandle, setResizeStartShape, setResizeStartPoint, setSelectedElementId, setSelectedElementType, setIsDragging, setDragOffset, setDragStartPosition, setIsDrawingShape, setShapeStartPoint, setCurrentShape, setCurrentStrokeId, setIsDrawing, setCurrentStroke, setTexts, setTextBeforeEdit, setStickyNotes, setStickyBeforeEdit]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current;

@@ -29,4 +29,11 @@ export class UpdateImageDto {
   )
   @IsNumber()
   height?: number;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? parseInt(value, 10) : undefined,
+  )
+  @IsNumber()
+  zIndex?: number;
 }
